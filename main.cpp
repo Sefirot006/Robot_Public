@@ -279,7 +279,6 @@ void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
    }
 }
 
-
 int main(int argc, char** argv){   //init the ROS node
    ros::init(argc, argv, "robot_driver");
    ros::NodeHandle nh;
