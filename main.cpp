@@ -4,13 +4,24 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
 
+#include <image_transport/image_transport.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <cv_bridge/cv_bridge.h>
+
+const bool debug = true;
+
+void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg);
+
 class RobotDriver
 {
 private:
-
   double forwardVel;
   double rotateVel;
   double closestRange;
+  double valNormalIz;
+  double valNormalDe;
+  bool brecha;
+
   //! The node handle we'll be using
   ros::NodeHandle nh_;
   //! We will be publishing to the "/base_controller/command" topic to issue commands
@@ -19,91 +30,181 @@ private:
   ros::Publisher scan_pub;
 
   ros::Subscriber laserSub;
+  ros::Subscriber frontRGBSub;
+  ros::Subscriber rearRGB1Sub;
+  ros::Subscriber rearRGB2Sub;
 
 public:
   //! ROS node initialization
   RobotDriver(ros::NodeHandle &nh)
   {
-    forwardVel = 0.5;
+    forwardVel = 0.0;
     rotateVel = 0.0;
+    valNormalIz = 1.5;
+    valNormalDe = 3;
+    brecha = false;
     nh_ = nh;
     //set up the publisher for the cmd_vel topic
-    cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot1/commands/velocity", 1);
+    cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
     //laserSub = nh.subscribe("base_scan", 1, &Wander::commandCallback, this);
     //scan_pub = nh.advertise<sensor_msgs::LaserScan>("scan", 50);
     // Susctibe el metodo procesaDatosLaser al topico scan del robot1(que sera el laser(creo))
     // Este metodo sera llamado cada vez que el emisor publique datos
-    laserSub = nh.subscribe("/robot1/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
+    rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocal, this);
+    rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocal, this);
+  }
+
+  void giraI(){
+    rotateVel = 0.5;
+    brecha = false;
+  }
+
+  void giraD(){
+    rotateVel = -0.5;
+    brecha = false;
+  }
+
+  void brechaDetectada(const double valueI,const double valueF, const double valueD){
+    if(valueI<valNormalIz && valueD<valNormalDe){
+      if(valueI < valueD)
+        giraI();
+      else
+        giraD();
+    }
+  }
+
+  void procesaDatosMonofocal(const sensor_msgs::ImageConstPtr& msg){
+    if (debug)
+      verCamaraFrontal(msg);
+
+    
+  }
+
+
+
+  void procesaDatosBifocal(const sensor_msgs::ImageConstPtr& msg){
+    
   }
 
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
     //std::cout << "probando" << std::endl;
 
-    // MÃ­nimo valor angular del lÃ¡ser -0.521568
+    // Mínimo valor angular del láser -0.521568
     ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
-    // MÃ¡ximo valor angular del lÃ¡ser 0.524276
+    // Máximo valor angular del láser 0.524276
     ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
     // Incremento angular entre dos beams 0.00163669
     ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
-    // MÃ­nimo valor que devuelve el lÃ¡ser 0.45
+    // Mínimo valor que devuelve el láser 0.45
     ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
-    // MÃ¡ximo valor que devuelve el lÃ¡ser. Valores por debajo y 
+    // Máximo valor que devuelve el láser. Valores por debajo y 
     // por encima de estos rangos no deben ser tenidos en cuenta 10
     ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
     // Me esta dando 639 valores del laser
-    int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el lÃ¡ser
+    int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
     
-    // TODO A partir de aqui hay que cambiarlo
-    /**double value1 = 0,value2 = 0,value3 = 0;
-    for (int i=0; i< totalValues; i++) {
-      if(i<440 && i>=100)
-        value3 += msg->ranges[i];
-      if(i<600 && i>=400)
-        value2 += msg->ranges[i];
-      if(i>=600 && i<940)
-        value1 += msg->ranges[i];
-      //ROS_INFO_STREAM("Values[" << i << "]:" << msg->ranges[i]); // Acceso a los valores de rango
+    //std::cout << "AAAAAAAAAAAAAA: " << totalValues << std::endl;
+    double valueI = 0.1, valueF = 0.1, valueD = 0.1;
+    int contI = 1, contF = 1, contD = 1;
+    for(int i=0;i<totalValues;++i){
+      if(i>=18 && i<190){
+        if(!std::isnan(msg->ranges[i])){
+          valueD += msg->ranges[i];
+          contD++;
+        }
+      }
+      if(i>=218 && i<318){
+        if(!std::isnan(msg->ranges[i])){
+          valueF += msg->ranges[i];
+          contF++;
+        }
+      }
+      if(i>=346 && i<518){
+        if(!std::isnan(msg->ranges[i])){
+          valueI += msg->ranges[i];
+          contI++;
+        }
+      }
+      //std::cout << "i " << i << ": " << msg->ranges[i] << std::endl;
     }
-    value1 /= 340;
-    ROS_INFO_STREAM("Value1:" << value1); // Acceso a los valores de rango
-    value2 /= 200;
-    ROS_INFO_STREAM("Value2:" << value2); // Acceso a los valores de rango
-    value3 /= 340;
-    ROS_INFO_STREAM("Value3:" << value3); // Acceso a los valores de rango
+    valueD /= contD;
+    ROS_INFO_STREAM("ValueD:" << valueD << "; " << contD); // Acceso a los valores de rango
+    valueF /= contF;
+    ROS_INFO_STREAM("ValueF:" << valueF << "; " << contF); // Acceso a los valores de rango
+    valueI /= contI;
+    ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
+    
+    // Pruebas de la navegacion
+    // Intento de que se enderece siempre hacia adelante
+    // Si no hay nada delante avanza sin problemas
+    if(valueF==0.1 && contF == 1)
+      forwardVel = 0.5;
+    else if(valueF > 2){
+      forwardVel = 0.5;
+      if(valueD < 5.5 && valueD > 3.5)
+        rotateVel = -0.1;
+      if(valueI < 1.3 && valueI > 0.8)
+        rotateVel = 0.1;
+    }
 
-    if(value2 < 1.5){
+    /**
+    if(!brecha){
+      // Si no hay nada delante avanza sin problemas
+      if(valueF==0.1 && contF == 1)
+        forwardVel = 0.5;
+      else if(valueF > 2){
+        forwardVel = 0.5;
+        if(valueI < 1.7)
+          rotateVel = 0.25;
+        else if(valueD < 6.3)
+          rotateVel = -0.25;
+        // Estariamos detectando una brecha en el muro
+        else if(valueI < valNormalIz || valueD < valNormalDe){
+          brecha = true;
+          brechaDetectada(valueI,valueF,valueD);
+        }
+        else
+          rotateVel = 0;
+      }
+      // Tenemos un obstaculo por delante
+      else
+        forwardVel = 0;
+    }
+    else
+      brechaDetectada(valueI,valueF,valueD);
+    
+    */
+    // Codigo del wander aplicado a esto
+    /**
+    if(valueF < 0.4){
       forwardVel = -0.2;
-      if(value1 < 2){
-        rotateVel = 0.4;
-      }
-      else if(value3 < 2){
-        rotateVel = -0.4;
-      }
+      if(valueD < 1.2)
+        rotateVel = -0.25;
+      else if(valueI < 1.2)
+        rotateVel = 0.25;
     }
-    else if(value2 < 2){
-      forwardVel = 0.5;
-    }
+    else if(valueF < 0.5)
+      forwardVel = 0.3;
     else{
       forwardVel = 0.5;
     }
-    if(value1 < 2){
-      rotateVel = -0.4;
-      if(value3 < 0.5){
-        rotateVel = 0.4;
-      }
+    if(valueD < 1.2){
+      rotateVel = 0.25;
+      if(valueI < 0.5)
+        rotateVel = -0.25;
     }
-    else if(value2 < 2){
-      rotateVel = 0.4;
-      if(value1 < 0.5){
-        rotateVel = -0.4;
-      }
+    else if(valueI < 1.2){
+      rotateVel = -0.25;
+      if(valueD < 0.5)
+        rotateVel = 0.25;
     }
-    else{
-      rotateVel = 0;
-    }
+    else rotateVel = 0;
     */
   }
 
+/**
   //! Loop forever while sending drive commands based on keyboard input
   bool driveKeyboard()
   {
@@ -149,6 +250,7 @@ public:
     }
     return true;
   }
+*/
 
   void bucle(){
     ros::Rate rate(10);
@@ -162,17 +264,40 @@ public:
       ros::spinOnce(); // Se procesaran todas las llamadas que queden pendientes (como procesaDatosLaser)
       rate.sleep(); // Con esto esperara a que acabe el ciclo
     }
+
+    if (debug) {
+      ros::spin();
+      ros::shutdown();
+      cv::destroyWindow("view");
+    }
   }
 
 };
 
-int main(int argc, char** argv)
-{
-  //init the ROS node
+void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
+  try { 
+     cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image);
+     cv::waitKey(30);
+  }
+  catch (cv_bridge::Exception& e) {
+     ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
+  }
+}
+
+
+int main(int argc, char** argv){  //init the ROS node
   ros::init(argc, argv, "robot_driver");
   ros::NodeHandle nh;
 
   RobotDriver driver(nh);
+
+  if (debug) {
+    cv::namedWindow("view");
+    cv::startWindowThread();
+    image_transport::ImageTransport it(nh);
+    image_transport::Subscriber subAux = it.subscribe("robot1/camera/rgb/image_raw", 1, verCamaraFrontal);
+  }
+
   //driver.driveKeyboard();
   driver.bucle();
   return 0;
