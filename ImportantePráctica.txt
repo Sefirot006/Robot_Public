@@ -1,0 +1,37 @@
+Solo se puede usar: Laser y camara delantera
+Se puede fusionar imágenes de cámara trasera (algo de panorámica)
+No se puede usar nubes de puntos
+
+Calibrar con dos muestras, para calcular distancias (distancia 1 metro y distancia 2 metros, con esto podemos extrapolar distancias).
+
+Detectar delante robot a menos de un metro para aprovechar rebufo
+
+LaserScan
+Imagen de video
+
+Calcular áreas
+
+roscore
+source devel/setup.bash
+roslaunch turtlebot_gazebo_multiple create_multi_robot.launch
+rostopic list
+rostopic info /robot1/commands/velocity
+rostopic pub -r 10 /robot1/commands/velocity geometry_msgs/Twist '{linear: {x: 0.1}}'
+
+rosrun send_velocity_commands send_velocity_commands_node
+
+
+Con OpenCV (Coger el mejor):
+- Fast con surf
+- Surf con nor
+- Surf con surf
+
+1.- Obtener 2 imágenes
+2.- Calcular KeyPoints (2 imágenes)
+3.- Calcular Descriptores (2A Key Points)
+4.- Calcular Correspondencias (Filtrar)
+5.- Obtener Homografía
+6.- Aplicar transformación + Unir
+
+
+http://wiki.ros.org/cv_bridge/Tutorials/UsingCvBridgeToConvertBetweenROSImagesAndOpenCVImages
