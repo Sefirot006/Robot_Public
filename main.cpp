@@ -11,6 +11,7 @@
 const bool debug = true;
 
 void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg);
+void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg);
 
 class RobotDriver
 {
@@ -34,6 +35,9 @@ private:
    ros::Subscriber rearRGB1Sub;
    ros::Subscriber rearRGB2Sub;
 
+   cv_bridge::CvImagePtr cv_ptr_izq;
+   cv_bridge::CvImagePtr cv_ptr_der;
+
 public:
    //! ROS node initialization
    RobotDriver(ros::NodeHandle &nh){
@@ -49,8 +53,8 @@ public:
       // Este metodo sera llamado cada vez que el emisor publique datos
       laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
       frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
-      rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocal, this);
-      rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocal, this);
+      rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
+      rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
    }
 
    void giraI(){
@@ -73,16 +77,38 @@ public:
    }
 
    void procesaDatosMonofocal(const sensor_msgs::ImageConstPtr& msg){
-      if (debug)
-         verCamaraFrontal(msg);
-
-      
+      if (debug) {
+         //verCamaraFrontal(msg);
+         verCamaraFrontalNormalizada(msg);
+      }
    }
 
+   void procesaDatosBifocal(){
+      //A partir de aqui
+      //Se fusionan las imagenes de cv_ptr_izq y cv_ptr_der.
+      //http://stackoverflow.com/questions/11134667/some-problems-on-image-stitching-homography?lq=1
+      //FindContours
+      //http://docs.opencv.org/3.1.0/d3/dc0/group__imgproc__shape.html#ga17ed9f5d79ae97bd4c7cf18403e1689a&gsc.tab=0
+   }
 
+   void procesaDatosBifocalIzq(const sensor_msgs::ImageConstPtr& msg){
+      try {
+         cv_ptr_izq = cv_bridge::toCvCopy(msg, msg->encoding);
+      }
+      catch (cv_bridge::Exception& e){
+         ROS_ERROR("cv_bridge exception: %s", e.what());
+         return;
+      }
+   }
 
-   void procesaDatosBifocal(const sensor_msgs::ImageConstPtr& msg){
-      
+   void procesaDatosBifocalDer(const sensor_msgs::ImageConstPtr& msg){
+      try {
+         cv_ptr_der = cv_bridge::toCvCopy(msg, msg->encoding);
+      }
+      catch (cv_bridge::Exception& e){
+         ROS_ERROR("cv_bridge exception: %s", e.what());
+         return;
+      }
    }
 
    void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
@@ -270,6 +296,8 @@ public:
 };
 
 void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
+   cv::namedWindow("view");
+   cv::startWindowThread();
    try { 
       cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image);
       cv::waitKey(30);
@@ -279,18 +307,40 @@ void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
    }
 }
 
+void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
+   cv::namedWindow("view");
+   cv::startWindowThread();
+   try {
+      cv_bridge::CvImageConstPtr cv_ptr;
+      cv_ptr = cv_bridge::toCvShare(msg);
+      //cv_bridge::toCvCopy(msg, msg->encoding);
+
+      // imshow expects a float value to lie in [0,1], so we need to normalize
+      // for visualization purposes.
+      double max = 0.0;
+      cv::minMaxLoc(cv_ptr->image, 0, &max, 0, 0);
+      cv::Mat normalized;
+      cv_ptr->image.convertTo(normalized, CV_32F, 1.0/max, 0);
+
+      cv::imshow("view", normalized);
+      cv::waitKey(1);
+   } catch (const cv_bridge::Exception& e) {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+   }
+}
+
 int main(int argc, char** argv){   //init the ROS node
    ros::init(argc, argv, "robot_driver");
    ros::NodeHandle nh;
 
    RobotDriver driver(nh);
 
-   if (debug) {
-      cv::namedWindow("view");
-      cv::startWindowThread();
-      image_transport::ImageTransport it(nh);
-      image_transport::Subscriber subAux = it.subscribe("robot1/camera/rgb/image_raw", 1, verCamaraFrontal);
-   }
+   //if (debug) {
+      //cv::namedWindow("view");
+      //cv::startWindowThread();
+      //image_transport::ImageTransport it(nh);
+      //image_transport::Subscriber subAux = it.subscribe("robot1/camera/rgb/image_raw", 1, verCamaraFrontal);
+   //}
 
    //driver.driveKeyboard();
    driver.bucle();
