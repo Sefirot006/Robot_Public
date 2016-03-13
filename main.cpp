@@ -5,6 +5,15 @@
 #include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Odometry.h>
 
+#include <image_transport/image_transport.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <cv_bridge/cv_bridge.h>
+
+const bool debug = true;
+
+void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg);
+void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg);
+
 class RobotDriver
 {
 private:
@@ -18,6 +27,7 @@ private:
     
   bool brecha;
   bool esquina;
+  
   //! The node handle we'll be using
   ros::NodeHandle nh_;
   //! We will be publishing to the "/base_controller/command" topic to issue commands
@@ -26,6 +36,14 @@ private:
 
   ros::Subscriber laserSub;
   //ros::Subscriber odometry;
+
+  ros::Subscriber frontRGBSub;
+  ros::Subscriber rearRGB1Sub;
+  ros::Subscriber rearRGB2Sub;
+
+  cv_bridge::CvImagePtr cv_ptr_izq;
+  cv_bridge::CvImagePtr cv_ptr_der;
+
 
 public:
   //! ROS node initialization
@@ -46,6 +64,9 @@ public:
     // Susctibe el metodo procesaDatosLaser al topico scan del robot1(que sera el laser(creo))
     // Este metodo sera llamado cada vez que el emisor publique datos
     laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
+    rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
+    rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
     //odometry = nh.subscribe("odom", 1, &RobotDriver::commandOdom, this);
   }
 /**
@@ -56,6 +77,42 @@ public:
     ROS_INFO_STREAM("Odometry angz: " << 2*atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
   }
 */
+
+  void procesaDatosMonofocal(const sensor_msgs::ImageConstPtr& msg){
+      if (debug) {
+         //verCamaraFrontal(msg);
+         verCamaraFrontalNormalizada(msg);
+      }
+   }
+
+   void procesaDatosBifocal(){
+      //A partir de aqui
+      //Se fusionan las imagenes de cv_ptr_izq y cv_ptr_der.
+      //http://stackoverflow.com/questions/11134667/some-problems-on-image-stitching-homography?lq=1
+      //FindContours
+      //http://docs.opencv.org/3.1.0/d3/dc0/group__imgproc__shape.html#ga17ed9f5d79ae97bd4c7cf18403e1689a&gsc.tab=0
+   }
+
+   void procesaDatosBifocalIzq(const sensor_msgs::ImageConstPtr& msg){
+      try {
+         cv_ptr_izq = cv_bridge::toCvCopy(msg, msg->encoding);
+      }
+      catch (cv_bridge::Exception& e){
+         ROS_ERROR("cv_bridge exception: %s", e.what());
+         return;
+      }
+   }
+
+   void procesaDatosBifocalDer(const sensor_msgs::ImageConstPtr& msg){
+      try {
+         cv_ptr_der = cv_bridge::toCvCopy(msg, msg->encoding);
+      }
+      catch (cv_bridge::Exception& e){
+         ROS_ERROR("cv_bridge exception: %s", e.what());
+         return;
+      }
+   }
+
   void detectaBrecha(const double valueI,const double valueF, const double valueD){
     std::cout << "DETECTANDO BRECHA" << std::endl;
     forwardVel = 0.5;
@@ -238,18 +295,64 @@ public:
       ros::spinOnce(); // Se procesaran todas las llamadas que queden pendientes (como procesaDatosLaser)
       rate.sleep(); // Con esto esperara a que acabe el ciclo
     }
+
+    if (debug) {
+       ros::spin();
+       ros::shutdown();
+       cv::destroyWindow("view");
+    }
   }
 
 };
 
-int main(int argc, char** argv)
-{
-  //init the ROS node
-  ros::init(argc, argv, "robot_driver");
-  ros::NodeHandle nh;
+void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
+   cv::namedWindow("view");
+   cv::startWindowThread();
+   try { 
+      cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image);
+      cv::waitKey(30);
+   }
+   catch (cv_bridge::Exception& e) {
+      ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
+   }
+}
 
-  RobotDriver driver(nh);
-  //driver.driveKeyboard();
-  driver.bucle();
-  return 0;
+void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
+   cv::namedWindow("view");
+   cv::startWindowThread();
+   try {
+      cv_bridge::CvImageConstPtr cv_ptr;
+      cv_ptr = cv_bridge::toCvShare(msg);
+      //cv_bridge::toCvCopy(msg, msg->encoding);
+
+      // imshow expects a float value to lie in [0,1], so we need to normalize
+      // for visualization purposes.
+      double max = 0.0;
+      cv::minMaxLoc(cv_ptr->image, 0, &max, 0, 0);
+      cv::Mat normalized;
+      cv_ptr->image.convertTo(normalized, CV_32F, 1.0/max, 0);
+
+      cv::imshow("view", normalized);
+      cv::waitKey(1);
+   } catch (const cv_bridge::Exception& e) {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+   }
+}
+
+int main(int argc, char** argv){   //init the ROS node
+   ros::init(argc, argv, "robot_driver");
+   ros::NodeHandle nh;
+
+   RobotDriver driver(nh);
+
+   //if (debug) {
+      //cv::namedWindow("view");
+      //cv::startWindowThread();
+      //image_transport::ImageTransport it(nh);
+      //image_transport::Subscriber subAux = it.subscribe("robot1/camera/rgb/image_raw", 1, verCamaraFrontal);
+   //}
+
+   //driver.driveKeyboard();
+   driver.bucle();
+   return 0;
 }
