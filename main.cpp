@@ -3,6 +3,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
+#include <nav_msgs/Odometry.h>
 
 class RobotDriver
 {
@@ -11,29 +12,77 @@ private:
   double forwardVel;
   double rotateVel;
   double closestRange;
+  double valNormalIz;
+  double valNormalDe;
+  char ultimoGiro;
+    
+  bool brecha;
+  bool esquina;
   //! The node handle we'll be using
   ros::NodeHandle nh_;
   //! We will be publishing to the "/base_controller/command" topic to issue commands
   ros::Publisher cmd_vel_pub_;
-
   ros::Publisher scan_pub;
 
   ros::Subscriber laserSub;
+  //ros::Subscriber odometry;
 
 public:
   //! ROS node initialization
   RobotDriver(ros::NodeHandle &nh)
   {
-    forwardVel = 0.5;
+    forwardVel = 0.0;
     rotateVel = 0.0;
+    valNormalIz = 1.5;
+    valNormalDe = 3;
+    brecha = false;
+    esquina = false;
+    ultimoGiro = ' ';
     nh_ = nh;
     //set up the publisher for the cmd_vel topic
-    cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot1/commands/velocity", 1);
+    cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
     //laserSub = nh.subscribe("base_scan", 1, &Wander::commandCallback, this);
     //scan_pub = nh.advertise<sensor_msgs::LaserScan>("scan", 50);
     // Susctibe el metodo procesaDatosLaser al topico scan del robot1(que sera el laser(creo))
     // Este metodo sera llamado cada vez que el emisor publique datos
-    laserSub = nh.subscribe("/robot1/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    //odometry = nh.subscribe("odom", 1, &RobotDriver::commandOdom, this);
+  }
+/**
+  void commandOdom(const nav_msgs::Odometry::ConstPtr& msg){
+    std::cout << "ODOMETRIA" << std::endl;
+    ROS_INFO_STREAM("Odometry x: " << msg->pose.pose.position.x); 
+    ROS_INFO_STREAM("Odometry y: " << msg->pose.pose.position.y); 
+    ROS_INFO_STREAM("Odometry angz: " << 2*atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
+  }
+*/
+  void detectaBrecha(const double valueI,const double valueF, const double valueD){
+    std::cout << "DETECTANDO BRECHA" << std::endl;
+    forwardVel = 0.5;
+    rotateVel = 0.15;
+    if(valueF < 2 && valueI < 3)
+      brecha = false;
+  }
+
+  void detectaObstaculo(const double valueI,const double valueF, const double valueD){
+    forwardVel = 0.3;
+    if(valueI < valueD){
+      rotateVel = -0.5;
+      ultimoGiro = 'i';
+    }
+    else{
+      rotateVel = 0.5;
+      ultimoGiro = 'd';
+    }
+  }
+
+  void salirEsquina(const double valueI,const double valueF, const double valueD){
+    if(ultimoGiro == 'i')
+      rotateVel = -0.5;
+    else
+      rotateVel = 0.5;
+    if(valueF > 1.5)
+      esquina = false;
   }
 
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
@@ -53,57 +102,83 @@ public:
     // Me esta dando 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
     
-    // TODO A partir de aqui hay que cambiarlo
-    /**double value1 = 0,value2 = 0,value3 = 0;
-    for (int i=0; i< totalValues; i++) {
-      if(i<440 && i>=100)
-        value3 += msg->ranges[i];
-      if(i<600 && i>=400)
-        value2 += msg->ranges[i];
-      if(i>=600 && i<940)
-        value1 += msg->ranges[i];
-      //ROS_INFO_STREAM("Values[" << i << "]:" << msg->ranges[i]); // Acceso a los valores de rango
+    //std::cout << "AAAAAAAAAAAAAA: " << totalValues << std::endl;
+    double valueI = 0.1, valueF = 0.1, valueD = 0.1;
+    int contI = 1, contF = 1, contD = 1;
+    for(int i=0;i<totalValues;++i){
+      // 200
+      if(i>=5 && i<205){
+        if(!std::isnan(msg->ranges[i])){
+          valueD += msg->ranges[i];
+          contD++;
+        }
+      }
+      // 130
+      if(i>=228 && i<358){
+        if(!std::isnan(msg->ranges[i])){
+          valueF += msg->ranges[i];
+          contF++;
+        }
+      }
+      // 200
+      if(i>=434 && i<634){
+        if(!std::isnan(msg->ranges[i])){
+          valueI += msg->ranges[i];
+          contI++;
+        }
+      }
+      //std::cout << "i " << i << ": " << msg->ranges[i] << std::endl;
     }
-    value1 /= 340;
-    ROS_INFO_STREAM("Value1:" << value1); // Acceso a los valores de rango
-    value2 /= 200;
-    ROS_INFO_STREAM("Value2:" << value2); // Acceso a los valores de rango
-    value3 /= 340;
-    ROS_INFO_STREAM("Value3:" << value3); // Acceso a los valores de rango
+    valueD /= contD;
+    ROS_INFO_STREAM("ValueD:" << valueD << "; " << contD); // Acceso a los valores de rango
+    valueF /= contF;
+    ROS_INFO_STREAM("ValueF:" << valueF << "; " << contF); // Acceso a los valores de rango
+    valueI /= contI;
+    ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
 
-    if(value2 < 1.5){
-      forwardVel = -0.2;
-      if(value1 < 2){
-        rotateVel = 0.4;
-      }
-      else if(value3 < 2){
-        rotateVel = -0.4;
-      }
-    }
-    else if(value2 < 2){
-      forwardVel = 0.5;
-    }
-    else{
-      forwardVel = 0.5;
-    }
-    if(value1 < 2){
-      rotateVel = -0.4;
-      if(value3 < 0.5){
-        rotateVel = 0.4;
-      }
-    }
-    else if(value2 < 2){
-      rotateVel = 0.4;
-      if(value1 < 0.5){
-        rotateVel = -0.4;
-      }
+    // rotateVel positivo gira a la izquierda
+    // rotateVel negativo gira a la derecha
+
+    //Prueba de dar media vuelta
+    /**if(vuelta>0){
+      rotateVel = 0.5;
+      vuelta--;
     }
     else{
       rotateVel = 0;
+    }*/
+
+    // Pruebas de la navegacion
+    //Intentando ir siempre en el centro del camino
+    if(!esquina && !brecha){
+      if(valueF==0.1 && valueI==0.1 && valueD==0.1){
+        esquina = true;
+        forwardVel = -0.4;
+      }
+      else if(valueF==0.1 && contF == 1 && contI != 1 && contD != 1)
+        forwardVel = 0.5;
+      else if(valueF > 2){
+        forwardVel = 0.5;
+        if(valueI < 2.6 && valueD > 3.2)
+          rotateVel = -0.1;
+        else if(valueD < 2.6 && valueI > 3.2)
+          rotateVel = 0.1;
+        else
+          rotateVel = 0;
+        if(valueI > 6)
+          brecha = true;        
+      }
+      else{
+        detectaObstaculo(valueI, valueF,valueD);
+      }
     }
-    */
+    else if(esquina)
+      salirEsquina(valueI,valueF,valueD);
+    else
+      detectaBrecha(valueI, valueF,valueD);
   }
 
+/**
   //! Loop forever while sending drive commands based on keyboard input
   bool driveKeyboard()
   {
@@ -149,6 +224,7 @@ public:
     }
     return true;
   }
+*/
 
   void bucle(){
     ros::Rate rate(10);
