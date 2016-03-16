@@ -4,6 +4,7 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Odometry.h>
+#include <sensor_msgs/Imu.h>
 
 #include <image_transport/image_transport.h>
 #include <opencv2/highgui/highgui.hpp>
@@ -35,7 +36,7 @@ private:
   ros::Publisher scan_pub;
 
   ros::Subscriber laserSub;
-  //ros::Subscriber odometry;
+  ros::Subscriber imu;
 
   ros::Subscriber frontRGBSub;
   ros::Subscriber rearRGB1Sub;
@@ -67,16 +68,16 @@ public:
     frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
     rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
     rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
-    //odometry = nh.subscribe("odom", 1, &RobotDriver::commandOdom, this);
+    //imu = nh.subscribe("/robot2/imu_data", 1, &RobotDriver::commandImu, this);
   }
-/**
-  void commandOdom(const nav_msgs::Odometry::ConstPtr& msg){
-    std::cout << "ODOMETRIA" << std::endl;
-    ROS_INFO_STREAM("Odometry x: " << msg->pose.pose.position.x); 
-    ROS_INFO_STREAM("Odometry y: " << msg->pose.pose.position.y); 
-    ROS_INFO_STREAM("Odometry angz: " << 2*atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
+//sensor_msgs/Imu
+  void commandImu(const sensor_msgs::Imu::ConstPtr& msg){
+    std::cout << "IMU" << std::endl;
+    //ROS_INFO_STREAM("Odometry x: " << msg->pose.pose.position.x); 
+    //ROS_INFO_STREAM("Odometry y: " << msg->pose.pose.position.y); 
+    //ROS_INFO_STREAM("Odometry angz: " << 2*atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
   }
-*/
+
 
   void procesaDatosMonofocal(const sensor_msgs::ImageConstPtr& msg){
       if (debug) {
@@ -145,17 +146,19 @@ public:
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
     //std::cout << "probando" << std::endl;
 
-    // Mínimo valor angular del láser -0.521568
-    ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
-    // Máximo valor angular del láser 0.524276
-    ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
-    // Incremento angular entre dos beams 0.00163669
-    ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
-    // Mínimo valor que devuelve el láser 0.45
-    ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
-    // Máximo valor que devuelve el láser. Valores por debajo y 
-    // por encima de estos rangos no deben ser tenidos en cuenta 10
-    ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
+    if(debug){
+      // Mínimo valor angular del láser -0.521568
+      ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
+      // Máximo valor angular del láser 0.524276
+      ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
+      // Incremento angular entre dos beams 0.00163669
+      ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
+      // Mínimo valor que devuelve el láser 0.45
+      ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
+      // Máximo valor que devuelve el láser. Valores por debajo y 
+      // por encima de estos rangos no deben ser tenidos en cuenta 10
+      ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
+    }
     // Me esta dando 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
     
