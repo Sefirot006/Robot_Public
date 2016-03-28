@@ -56,3 +56,13 @@ float Quaternion::getRoll(){ atan2(2*(x*y + w*z), w*w + x*x - y*y -z*z);}
 
 ENLACE PANORAMICA
 http://ramsrigoutham.com/2012/11/22/panorama-image-stitching-in-opencv/
+
+gazebo/ModelStatesMessage
+el imu es la peste y se va a obtener del objeto 3D dentro del simulador, para el mundo real no funciona pero en el simulador si, coordenadas del simulador.
+/gazebo/model_states -> tipo: gazebo_msgs::ModelStates{
+	name[]
+	pose[]
+	twist[]
+}
+Al obtener ese mensaje te dan de todo el mapa, hay que buscar en name nuestro robot y guardarnos el indice de nuestro robot, para acceder al pose y al twist, la pose tiene position y orientation y el twist tiene vel.lineal y vel.articular.
+El mapa mide 20x20 Con estos datos podemos rellenar un mapeado ya que es una matriz de mapa y podemos ponr las paredes a 1 por ejemplo y asi ir dibujando el mapa, siguen siendo quaternions de mierda

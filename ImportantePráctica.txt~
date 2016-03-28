@@ -53,3 +53,6 @@ float Quaternion::getYaw(){ return asin(-2*(x*z - w*y));
 
 float Quaternion::getRoll(){ atan2(2*(x*y + w*z), w*w + x*x - y*y -z*z);}
 
+
+ENLACE PANORAMICA
+http://ramsrigoutham.com/2012/11/22/panorama-image-stitching-in-opencv/

@@ -10,7 +10,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
-const bool debug = true;
+const bool debug = false;
 
 void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg);
 void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg);
@@ -18,13 +18,13 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg);
 class RobotDriver
 {
 private:
-
   double forwardVel;
   double rotateVel;
-  double closestRange;
-  double valNormalIz;
-  double valNormalDe;
-  char ultimoGiro;
+  double valueIzN;
+  double valueDeN;
+  double valueIzExtAnt;
+
+  //char ultimoGiro;
     
   bool brecha;
   bool esquina;
@@ -52,11 +52,12 @@ public:
   {
     forwardVel = 0.0;
     rotateVel = 0.0;
-    valNormalIz = 1.5;
-    valNormalDe = 3;
+    valueIzN = 1.5;
+    valueDeN = 4.5;
+    valueIzExtAnt = 10;
     brecha = false;
     esquina = false;
-    ultimoGiro = ' ';
+    //ultimoGiro = ' ';
     nh_ = nh;
     //set up the publisher for the cmd_vel topic
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
@@ -64,7 +65,12 @@ public:
     //scan_pub = nh.advertise<sensor_msgs::LaserScan>("scan", 50);
     // Susctibe el metodo procesaDatosLaser al topico scan del robot1(que sera el laser(creo))
     // Este metodo sera llamado cada vez que el emisor publique datos
+    
+    // Para la navegacion
     laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    // Para sacar el tamaño del robot en el laser
+    //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::compruebaRobot, this);
+
     frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
     rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
     rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
@@ -114,6 +120,7 @@ public:
       }
    }
 
+   /**
   void detectaBrecha(const double valueI,const double valueF, const double valueD){
     std::cout << "DETECTANDO BRECHA" << std::endl;
     forwardVel = 0.5;
@@ -123,29 +130,71 @@ public:
   }
 
   void detectaObstaculo(const double valueI,const double valueF, const double valueD){
+    std::cout << "Detectando obstaculo" << std::endl;
     forwardVel = 0.3;
     if(valueI < valueD){
       rotateVel = -0.5;
-      ultimoGiro = 'i';
+      //ultimoGiro = 'i';
     }
     else{
       rotateVel = 0.5;
-      ultimoGiro = 'd';
+      //ultimoGiro = 'd';
+    }
+  }
+  */
+
+  /**
+  void salirEsquina(const double valueI,const double valueF, const double valueD){
+    std::cout << "SALIENDO DE ESQUINA" << std::endl;
+    if(ultimoGiro == 'i')
+      rotateVel = -0.4;
+    else
+      rotateVel = 0.4;
+    if(valueF > 2.5)
+      esquina = false;
+  }
+  */
+
+  void compruebaRobot(const sensor_msgs::LaserScan::ConstPtr& msg){  
+    int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
+    int media = 0;
+    int aux = 0;
+    int cont = 0;
+    int auxPrimero = 0;
+    int auxUlt = 0;
+
+    for(int i=0;i<totalValues;++i){
+      if(!std::isnan(msg->ranges[i])){
+        if(msg->ranges[i]<1.1){
+          auxPrimero = i;
+          break;
+        }
+      }
+    }
+
+    for(int i=totalValues;i>=0;--i){
+      if(!std::isnan(msg->ranges[i])){
+        if(msg->ranges[i]<1.1){
+          auxUlt = i;
+          break;
+        }
+      }
+    }
+    if((auxUlt - auxPrimero) < 176 && (auxUlt-auxPrimero) > 174)
+      std::cout << "ROBOTICO" << std::endl;
+  }
+
+  void giroEsquina(const double valueI,const double valueF, const double valueD){
+    if(valueF<5 && valueF>1.5){
+      rotateVel = 0.4;
+      forwardVel = 0.2;
+    }
+    else{
+      esquina = false;
     }
   }
 
-  void salirEsquina(const double valueI,const double valueF, const double valueD){
-    if(ultimoGiro == 'i')
-      rotateVel = -0.5;
-    else
-      rotateVel = 0.5;
-    if(valueF > 1.5)
-      esquina = false;
-  }
-
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
-    //std::cout << "probando" << std::endl;
-
     if(debug){
       // Mínimo valor angular del láser -0.521568
       ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
@@ -163,79 +212,105 @@ public:
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
     
     //std::cout << "AAAAAAAAAAAAAA: " << totalValues << std::endl;
-    double valueI = 0.1, valueF = 0.1, valueD = 0.1;
-    int contI = 1, contF = 1, contD = 1;
+    double valueI = 0.1, valueF = 0.1, valueD = 0.1, valueIzExt = 0.1, valueDeExt = 0.1;
+    int contI = 1, contF = 1, contD = 1, contIE = 1, contDE = 1;
     for(int i=0;i<totalValues;++i){
-      // 200
-      if(i>=5 && i<205){
+      if(i>=0 && i<3){
+        if(!std::isnan(msg->ranges[i])){
+          valueDeExt += msg->ranges[i];
+          contDE++;
+        }
+      }
+      // 210
+      if(i>=0 && i<210){
         if(!std::isnan(msg->ranges[i])){
           valueD += msg->ranges[i];
           contD++;
         }
       }
       // 130
-      if(i>=228 && i<358){
+      //if(i>=228 && i<358){
+      //200
+      if(i>=219 && i<419){
         if(!std::isnan(msg->ranges[i])){
           valueF += msg->ranges[i];
           contF++;
         }
       }
-      // 200
-      if(i>=434 && i<634){
+      // 210
+      if(i>=429 && i<639){
         if(!std::isnan(msg->ranges[i])){
           valueI += msg->ranges[i];
           contI++;
         }
       }
+      if(i>=636 && i<639){
+        if(!std::isnan(msg->ranges[i])){
+          valueIzExt += msg->ranges[i];
+          contIE++;
+        }
+      }
       //std::cout << "i " << i << ": " << msg->ranges[i] << std::endl;
     }
+    valueDeExt /= contDE;
+    ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
     valueD /= contD;
     ROS_INFO_STREAM("ValueD:" << valueD << "; " << contD); // Acceso a los valores de rango
     valueF /= contF;
     ROS_INFO_STREAM("ValueF:" << valueF << "; " << contF); // Acceso a los valores de rango
     valueI /= contI;
     ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
+    valueIzExt /= contIE;
+    std::cout << "valueIzExtAnt: " << valueIzExtAnt << std::endl;
+    ROS_INFO_STREAM("valueIzExt:" << valueIzExt << "; " << contIE); // Acceso a los valores de rango
+    std::cout << std::endl;
 
     // rotateVel positivo gira a la izquierda
     // rotateVel negativo gira a la derecha
 
-    //Prueba de dar media vuelta
-    /**if(vuelta>0){
-      rotateVel = 0.5;
-      vuelta--;
-    }
-    else{
-      rotateVel = 0;
-    }*/
-
     // Pruebas de la navegacion
-    //Intentando ir siempre en el centro del camino
-    if(!esquina && !brecha){
-      if(valueF==0.1 && valueI==0.1 && valueD==0.1){
-        esquina = true;
-        forwardVel = -0.4;
-      }
-      else if(valueF==0.1 && contF == 1 && contI != 1 && contD != 1)
-        forwardVel = 0.5;
-      else if(valueF > 2){
-        forwardVel = 0.5;
-        if(valueI < 2.6 && valueD > 3.2)
-          rotateVel = -0.1;
-        else if(valueD < 2.6 && valueI > 3.2)
-          rotateVel = 0.1;
-        else
-          rotateVel = 0;
-        if(valueI > 6)
-          brecha = true;        
-      }
-      else{
-        detectaObstaculo(valueI, valueF,valueD);
-      }
+    // Para que siga la pared izquierda
+    if(valueIzExt > valueIzExtAnt+0.5){
+      esquina = true;
+      std::cout << "ESQUINAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" << std::endl;
+      // Sacar la orientacion y no parar hasta que haya girado 90º??
     }
-    else if(esquina)
-      salirEsquina(valueI,valueF,valueD);
-    else
-      detectaBrecha(valueI, valueF,valueD);
+    if(!esquina){
+      if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 2){
+        std::cout << "SIGO RECTO" << std::endl;
+        forwardVel = 0.5;
+        rotateVel = 0;
+      }
+      else if(valueI > valueIzN+0.3 && valueF > 2){
+        std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
+        forwardVel = 0.5;
+        rotateVel = 0.3;
+      }
+      else if(valueI < valueIzN-0.3 && valueF > 2){
+        std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
+        forwardVel = 0.5;
+        rotateVel = -0.3;
+      }
+      // Hasta aqui es para que siga la pared izquierda
+      // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
+      else if(valueF < 2){
+        forwardVel = 0.1;
+        if(valueI < valueD){
+          std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
+          rotateVel = -0.4;
+        }
+        else{
+          rotateVel = 0.4;
+          std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+        }
+      }
+      else forwardVel = 0;
+    }
+    else if(esquina){
+      giroEsquina(valueI,valueF,valueD);
+    }
+
+    valueIzExtAnt = valueIzExt;
   }
 
 /**
