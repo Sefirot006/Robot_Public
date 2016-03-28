@@ -1,0 +1,2 @@
+export ROS_MASTER_URI = http://172.20.42.101:11311
+export ROS_MASTER_URI = http://<dir_equipo>:<puerto>
