@@ -3,7 +3,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
-#include <nav_msgs/Odometry.h>
+#include <gazebo_msgs/ModelStates.h>
 #include <sensor_msgs/Imu.h>
 
 #include <image_transport/image_transport.h>
@@ -20,14 +20,11 @@ class RobotDriver
 private:
   double forwardVel;
   double rotateVel;
-  double valueIzN;
-  double valueDeN;
-  double valueIzExtAnt;
+  double valueIzN, valueDeN;
+  double valueIzExtAnt, valueDeExtAnt;
 
-  //char ultimoGiro;
-    
   bool brecha;
-  bool esquina;
+  bool esquinaIzquierda, esquinaDerecha;
   
   //! The node handle we'll be using
   ros::NodeHandle nh_;
@@ -36,6 +33,7 @@ private:
   ros::Publisher scan_pub;
 
   ros::Subscriber laserSub;
+  ros::Subscriber ms;
   ros::Subscriber imu;
 
   ros::Subscriber frontRGBSub;
@@ -55,8 +53,9 @@ public:
     valueIzN = 1.5;
     valueDeN = 4.5;
     valueIzExtAnt = 10;
-    brecha = false;
-    esquina = false;
+    valueDeExtAnt = 10;
+    esquinaIzquierda = false;
+    esquinaDerecha = false;
     //ultimoGiro = ' ';
     nh_ = nh;
     //set up the publisher for the cmd_vel topic
@@ -66,6 +65,10 @@ public:
     // Susctibe el metodo procesaDatosLaser al topico scan del robot1(que sera el laser(creo))
     // Este metodo sera llamado cada vez que el emisor publique datos
     
+    imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
+
+    // ModelStatesMessage
+    ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
     // Para la navegacion
     laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
     // Para sacar el tamaño del robot en el laser
@@ -74,11 +77,37 @@ public:
     frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
     rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
     rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
-    //imu = nh.subscribe("/robot2/imu_data", 1, &RobotDriver::commandImu, this);
   }
-//sensor_msgs/Imu
+  
+  //sensor_msgs/Imu
   void commandImu(const sensor_msgs::Imu::ConstPtr& msg){
     std::cout << "IMU" << std::endl;
+    //ROS_INFO_STREAM(msg->orientation);
+    double prueba = atan2(2*(msg->orientation.x*msg->orientation.y + msg->orientation.w*msg->orientation.z), 
+        msg->orientation.w*msg->orientation.w +
+        msg->orientation.x*msg->orientation.x -
+        msg->orientation.y*msg->orientation.y - 
+        msg->orientation.z*msg->orientation.z);
+
+    std::cout << "IMU_Orientacion despues del calculo: " << prueba << std::endl << std::endl;
+
+    std::cout << std::endl;
+  }
+
+  // El robot 2 esta en la i = 53
+  void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
+    std::cout << "ENTRO" << std::endl;
+    ROS_INFO_STREAM("Nombre: " << msg->name[53]);
+    ROS_INFO_STREAM("Posicion: \n" << msg->pose[53].position);
+    //ROS_INFO_STREAM("Orientacion: \n" << msg->pose[53].orientation);
+    double prueba = atan2(2*(msg->pose[53].orientation.x*msg->pose[53].orientation.y + msg->pose[53].orientation.w*msg->pose[53].orientation.z), 
+        msg->pose[53].orientation.w*msg->pose[53].orientation.w +
+        msg->pose[53].orientation.x*msg->pose[53].orientation.x -
+        msg->pose[53].orientation.y*msg->pose[53].orientation.y - 
+        msg->pose[53].orientation.z*msg->pose[53].orientation.z);
+
+    std::cout << "Orientacion despues del calculo: " << prueba << std::endl << std::endl;
+
     //ROS_INFO_STREAM("Odometry x: " << msg->pose.pose.position.x); 
     //ROS_INFO_STREAM("Odometry y: " << msg->pose.pose.position.y); 
     //ROS_INFO_STREAM("Odometry angz: " << 2*atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
@@ -155,42 +184,25 @@ public:
   }
   */
 
-  void compruebaRobot(const sensor_msgs::LaserScan::ConstPtr& msg){  
-    int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
-    int media = 0;
-    int aux = 0;
-    int cont = 0;
-    int auxPrimero = 0;
-    int auxUlt = 0;
-
-    for(int i=0;i<totalValues;++i){
-      if(!std::isnan(msg->ranges[i])){
-        if(msg->ranges[i]<1.1){
-          auxPrimero = i;
-          break;
-        }
-      }
+  void giroEsquinaDerecha(const double valueI,const double valueF, const double valueD){
+    std::cout << "GIRANDO POR LA FUNCION ESQUINA DERECHA!!" << std::endl;
+    if(valueF<5 && valueF>1.5){
+      rotateVel = -0.4;
+      forwardVel = 0.2;
     }
-
-    for(int i=totalValues;i>=0;--i){
-      if(!std::isnan(msg->ranges[i])){
-        if(msg->ranges[i]<1.1){
-          auxUlt = i;
-          break;
-        }
-      }
+    else{
+      esquinaDerecha = false;
     }
-    if((auxUlt - auxPrimero) < 176 && (auxUlt-auxPrimero) > 174)
-      std::cout << "ROBOTICO" << std::endl;
   }
 
-  void giroEsquina(const double valueI,const double valueF, const double valueD){
+  void giroEsquinaIzquierda(const double valueI,const double valueF, const double valueD){
+    std::cout << "GIRANDO POR LA FUNCION ESQUINA IZQUIERDA!!" << std::endl;
     if(valueF<5 && valueF>1.5){
       rotateVel = 0.4;
       forwardVel = 0.2;
     }
     else{
-      esquina = false;
+      esquinaIzquierda = false;
     }
   }
 
@@ -263,12 +275,73 @@ public:
     valueIzExt /= contIE;
     std::cout << "valueIzExtAnt: " << valueIzExtAnt << std::endl;
     ROS_INFO_STREAM("valueIzExt:" << valueIzExt << "; " << contIE); // Acceso a los valores de rango
+    std::cout << "valueDeExtAnt: " << valueDeExtAnt << std::endl;
+    ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
     std::cout << std::endl;
 
     // rotateVel positivo gira a la izquierda
     // rotateVel negativo gira a la derecha
 
     // Pruebas de la navegacion
+
+    if(valueIzExt > valueIzExtAnt+0.5){
+      esquinaIzquierda = true;
+      std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
+      // Sacar la orientacion y no parar hasta que haya girado 90º??
+    }
+    /**else if(valueDeExt > valueDeExtAnt+0.5){
+      esquinaDerecha = true;
+      std::cout << "ESQUINAAAAAAAAAAAAA DERECHA" << std::endl;
+    }*/
+    if(!esquinaIzquierda && !esquinaDerecha){
+      if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 1.1){
+        std::cout << "SIGO RECTO" << std::endl;
+        forwardVel = 0.5;
+        rotateVel = 0;
+      }
+      else if(valueI > valueIzN+0.4 && valueF > 1.1){
+        std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
+        forwardVel = 0.5;
+        rotateVel = 0.3;
+      }
+      else if(valueI < valueIzN-0.4 && valueF > 1.1){
+        std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
+        forwardVel = 0.5;
+        rotateVel = -0.3;
+      }
+      // Hasta aqui es para que siga la pared izquierda
+      // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
+      
+      else if(valueF < 1.1){
+        forwardVel = 0.1;
+        if(valueI < valueD){
+          std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
+          rotateVel = -0.4;
+        }
+        else{
+          rotateVel = 0.4;
+          std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+        }
+      }
+      else forwardVel = 0;
+    }
+    else if(esquinaIzquierda){
+      giroEsquinaIzquierda(valueI,valueF,valueD);
+    }
+    /**
+    else if(esquinaDerecha){
+      giroEsquinaDerecha(valueI,valueF,valueD);
+    }
+    */
+    else{
+      std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
+    }
+
+    valueIzExtAnt = valueIzExt;
+    valueDeExtAnt = valueDeExt;
+
+
+    /**
     // Para que siga la pared izquierda
     if(valueIzExt > valueIzExtAnt+0.5){
       esquina = true;
@@ -311,6 +384,7 @@ public:
     }
 
     valueIzExtAnt = valueIzExt;
+    */
   }
 
 /**
@@ -363,6 +437,7 @@ public:
 
   void bucle(){
     ros::Rate rate(10);
+    std::cout << "Iniciando bucle para siempre" << std::endl;
     while (ros::ok()){
       geometry_msgs::Twist base_cmd; // Este mensaje es el que se publicara para decir las velocidades linear y angular del robot
       base_cmd.linear.x = forwardVel; // Velocidad linear que tendra el colega
