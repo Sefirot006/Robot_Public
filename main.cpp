@@ -22,9 +22,23 @@ private:
   double rotateVel;
   double valueIzN, valueDeN;
   double valueIzExtAnt, valueDeExtAnt;
+  double valueI, valueF, valueD, valueIzExt, valueDeExt;
+  int contI, contF, contD, contIE, contDE;
 
-  bool brecha;
+  // Orientacion del robot real
+  double orientacion;
+  // Orientacion del robot antes de dar la vuelta
+  double orientacionGiro;
+  // Posicion robot en int para usarla con la matriz interna del mapa
+  struct posicion{
+    int x, y;
+  }posRobot;
+
+  bool camIncorrecto;
   bool esquinaIzquierda, esquinaDerecha;
+
+  // El mapa mide 20x20
+  int mapaCarrera[20][20];
   
   //! The node handle we'll be using
   ros::NodeHandle nh_;
@@ -48,24 +62,35 @@ public:
   //! ROS node initialization
   RobotDriver(ros::NodeHandle &nh)
   {
+    // Inicializacion de las variables
     forwardVel = 0.0;
     rotateVel = 0.0;
-    valueIzN = 1.5;
-    valueDeN = 4.5;
-    valueIzExtAnt = 10;
-    valueDeExtAnt = 10;
+
+    valueIzN = 1.5; valueDeN = 4.5;
+    valueIzExtAnt = 10; valueDeExtAnt = 10;
+    valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
+    contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
+    
     esquinaIzquierda = false;
     esquinaDerecha = false;
-    //ultimoGiro = ' ';
+    camIncorrecto = false;
+
+    // Inicializacion del mapa
+    for(unsigned i=0;i<20;++i){
+      for(unsigned j=0;j<20;++j){
+        mapaCarrera[i][j] = 0;
+      }
+    }
+    
     nh_ = nh;
+
+    //ultimoGiro = ' ';
+    
     //set up the publisher for the cmd_vel topic
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
-    //laserSub = nh.subscribe("base_scan", 1, &Wander::commandCallback, this);
-    //scan_pub = nh.advertise<sensor_msgs::LaserScan>("scan", 50);
-    // Susctibe el metodo procesaDatosLaser al topico scan del robot1(que sera el laser(creo))
-    // Este metodo sera llamado cada vez que el emisor publique datos
     
-    imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
+    // Para usar el imu descomentar
+    // imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
 
     // ModelStatesMessage
     ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
@@ -90,36 +115,87 @@ public:
         msg->orientation.z*msg->orientation.z);
 
     std::cout << "IMU_Orientacion despues del calculo: " << prueba << std::endl << std::endl;
+    std::cout << "IMU_linear_aceleration: " << msg->linear_acceleration << std::endl;
 
     std::cout << std::endl;
   }
 
   // El robot 2 esta en la i = 53
   void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
-    std::cout << "ENTRO" << std::endl;
+    unsigned suma = 0;
     ROS_INFO_STREAM("Nombre: " << msg->name[53]);
     ROS_INFO_STREAM("Posicion: \n" << msg->pose[53].position);
+    posRobot.x = msg->pose[53].position.x+10;
+    posRobot.y = msg->pose[53].position.y+10;
+
     //ROS_INFO_STREAM("Orientacion: \n" << msg->pose[53].orientation);
-    double prueba = atan2(2*(msg->pose[53].orientation.x*msg->pose[53].orientation.y + msg->pose[53].orientation.w*msg->pose[53].orientation.z), 
+    orientacion = atan2(2*(msg->pose[53].orientation.x*msg->pose[53].orientation.y + msg->pose[53].orientation.w*msg->pose[53].orientation.z), 
         msg->pose[53].orientation.w*msg->pose[53].orientation.w +
         msg->pose[53].orientation.x*msg->pose[53].orientation.x -
         msg->pose[53].orientation.y*msg->pose[53].orientation.y - 
         msg->pose[53].orientation.z*msg->pose[53].orientation.z);
 
-    std::cout << "Orientacion despues del calculo: " << prueba << std::endl << std::endl;
+    std::cout << "Orientacion despues del calculo: " << orientacion << std::endl << std::endl;
 
-    //ROS_INFO_STREAM("Odometry x: " << msg->pose.pose.position.x); 
-    //ROS_INFO_STREAM("Odometry y: " << msg->pose.pose.position.y); 
-    //ROS_INFO_STREAM("Odometry angz: " << 2*atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
+    // Comprobar si nos hemos dado la vuelta o no
+    if(orientacion > -0.75 && orientacion < 0.75){
+      // Avanzas hacia el sur
+      // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
+      mapaCarrera[posRobot.x][posRobot.y-1] = 1;
+      mapaCarrera[posRobot.x][posRobot.y] = 1;
+      mapaCarrera[posRobot.x][posRobot.y+1] = 1;
+      
+      // comprueba si ya has ido hacia esa posicion
+      suma = mapaCarrera[posRobot.x+2][posRobot.y-1] + mapaCarrera[posRobot.x+2][posRobot.y] + mapaCarrera[posRobot.x+2][posRobot.y+1];
+    } else if(orientacion < -0.75 && orientacion > -2.25){
+      // Avanzas hacia el oeste
+      // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
+      mapaCarrera[posRobot.x-1][posRobot.y] = 1;
+      mapaCarrera[posRobot.x][posRobot.y] = 1;
+      mapaCarrera[posRobot.x+1][posRobot.y] = 1;
+      
+      // comprueba si ya has ido hacia esa posicion
+      suma = mapaCarrera[posRobot.x-1][posRobot.y-2] + mapaCarrera[posRobot.x][posRobot.y-2] + mapaCarrera[posRobot.x+1][posRobot.y-2];
+
+    } else if(orientacion < -2.25 && orientacion < 2.25){
+      // Avanzas hacia el norte
+      // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
+      mapaCarrera[posRobot.x][posRobot.y-1] = 1;
+      mapaCarrera[posRobot.x][posRobot.y] = 1;
+      mapaCarrera[posRobot.x][posRobot.y+1] = 1;
+      
+      // comprueba si ya has ido hacia esa posicion
+      suma = mapaCarrera[posRobot.x-2][posRobot.y-1] + mapaCarrera[posRobot.x-2][posRobot.y] + mapaCarrera[posRobot.x-2][posRobot.y+1];
+    
+    } else {
+      // Avanzas hacia el este
+      // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
+      mapaCarrera[posRobot.x-1][posRobot.y] = 1;
+      mapaCarrera[posRobot.x][posRobot.y] = 1;
+      mapaCarrera[posRobot.x+1][posRobot.y] = 1;
+      
+      // comprueba si ya has ido hacia esa posicion
+      suma = mapaCarrera[posRobot.x-1][posRobot.y+2] + mapaCarrera[posRobot.x][posRobot.y+2] + mapaCarrera[posRobot.x+1][posRobot.y+2];
+    }
+
+    // Si la suma es > 2 y el camino es el correcto
+    if(suma > 2 && !camIncorrecto){
+      camIncorrecto = true;
+      if(orientacion>0)
+        orientacionGiro = orientacion-3;
+      else
+        orientacionGiro = orientacion+3;
+      std::cout << "OJO QUE ESTAS YENDO AL REVES" <<std::endl;
+    }
   }
 
 
   void procesaDatosMonofocal(const sensor_msgs::ImageConstPtr& msg){
-      if (debug) {
-         //verCamaraFrontal(msg);
-         verCamaraFrontalNormalizada(msg);
+    if (debug) {
+        //verCamaraFrontal(msg);
+        verCamaraFrontalNormalizada(msg);
       }
-   }
+    }
 
    void procesaDatosBifocal(){
       //A partir de aqui
@@ -149,42 +225,7 @@ public:
       }
    }
 
-   /**
-  void detectaBrecha(const double valueI,const double valueF, const double valueD){
-    std::cout << "DETECTANDO BRECHA" << std::endl;
-    forwardVel = 0.5;
-    rotateVel = 0.15;
-    if(valueF < 2 && valueI < 3)
-      brecha = false;
-  }
-
-  void detectaObstaculo(const double valueI,const double valueF, const double valueD){
-    std::cout << "Detectando obstaculo" << std::endl;
-    forwardVel = 0.3;
-    if(valueI < valueD){
-      rotateVel = -0.5;
-      //ultimoGiro = 'i';
-    }
-    else{
-      rotateVel = 0.5;
-      //ultimoGiro = 'd';
-    }
-  }
-  */
-
-  /**
-  void salirEsquina(const double valueI,const double valueF, const double valueD){
-    std::cout << "SALIENDO DE ESQUINA" << std::endl;
-    if(ultimoGiro == 'i')
-      rotateVel = -0.4;
-    else
-      rotateVel = 0.4;
-    if(valueF > 2.5)
-      esquina = false;
-  }
-  */
-
-  void giroEsquinaDerecha(const double valueI,const double valueF, const double valueD){
+  void giroEsquinaDerecha(){
     std::cout << "GIRANDO POR LA FUNCION ESQUINA DERECHA!!" << std::endl;
     if(valueF<5 && valueF>1.5){
       rotateVel = -0.4;
@@ -195,7 +236,7 @@ public:
     }
   }
 
-  void giroEsquinaIzquierda(const double valueI,const double valueF, const double valueD){
+  void giroEsquinaIzquierda(){
     std::cout << "GIRANDO POR LA FUNCION ESQUINA IZQUIERDA!!" << std::endl;
     if(valueF<5 && valueF>1.5){
       rotateVel = 0.4;
@@ -204,6 +245,18 @@ public:
     else{
       esquinaIzquierda = false;
     }
+  }
+
+  void darVueltaRobot(){
+    std::cout << "MI ORIENTACION ACTUAL ES: " << orientacion << ", Y LA ORIENTACION A LA QUE TENGO QUE LLEGAR ES: " << orientacionGiro << "\n";
+    if(orientacion<orientacionGiro+0.2 && orientacion>orientacionGiro-0.2){
+      camIncorrecto = false;
+    }
+    else{
+      rotateVel = 0.4;
+      forwardVel = 0;
+    }
+
   }
 
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
@@ -222,10 +275,11 @@ public:
     }
     // Me esta dando 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
+
+    valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
+    contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
     
-    //std::cout << "AAAAAAAAAAAAAA: " << totalValues << std::endl;
-    double valueI = 0.1, valueF = 0.1, valueD = 0.1, valueIzExt = 0.1, valueDeExt = 0.1;
-    int contI = 1, contF = 1, contD = 1, contIE = 1, contDE = 1;
+    // 4
     for(int i=0;i<totalValues;++i){
       if(i>=0 && i<3){
         if(!std::isnan(msg->ranges[i])){
@@ -240,10 +294,8 @@ public:
           contD++;
         }
       }
-      // 130
-      //if(i>=228 && i<358){
-      //200
-      if(i>=219 && i<419){
+      // 150
+      if(i>=244 && i<394){
         if(!std::isnan(msg->ranges[i])){
           valueF += msg->ranges[i];
           contF++;
@@ -256,6 +308,7 @@ public:
           contI++;
         }
       }
+      // 4
       if(i>=636 && i<639){
         if(!std::isnan(msg->ranges[i])){
           valueIzExt += msg->ranges[i];
@@ -283,157 +336,66 @@ public:
     // rotateVel negativo gira a la derecha
 
     // Pruebas de la navegacion
-
-    if(valueIzExt > valueIzExtAnt+0.5){
-      esquinaIzquierda = true;
-      std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
-      // Sacar la orientacion y no parar hasta que haya girado 90º??
-    }
-    /**else if(valueDeExt > valueDeExtAnt+0.5){
-      esquinaDerecha = true;
-      std::cout << "ESQUINAAAAAAAAAAAAA DERECHA" << std::endl;
-    }*/
-    if(!esquinaIzquierda && !esquinaDerecha){
-      if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 1.1){
-        std::cout << "SIGO RECTO" << std::endl;
-        forwardVel = 0.5;
-        rotateVel = 0;
+    if(camIncorrecto){
+      darVueltaRobot();
+    }else{
+      if(valueIzExt > valueIzExtAnt+0.5){
+        esquinaIzquierda = true;
+        std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
+        // Sacar la orientacion y no parar hasta que haya girado 90º??
       }
-      else if(valueI > valueIzN+0.4 && valueF > 1.1){
-        std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
-        forwardVel = 0.5;
-        rotateVel = 0.3;
-      }
-      else if(valueI < valueIzN-0.4 && valueF > 1.1){
-        std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
-        forwardVel = 0.5;
-        rotateVel = -0.3;
-      }
-      // Hasta aqui es para que siga la pared izquierda
-      // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
-      
-      else if(valueF < 1.1){
-        forwardVel = 0.1;
-        if(valueI < valueD){
-          std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
-          rotateVel = -0.4;
+      /**else if(valueDeExt > valueDeExtAnt+0.5){
+        esquinaDerecha = true;
+        std::cout << "ESQUINAAAAAAAAAAAAA DERECHA" << std::endl;
+      }*/
+      if(!esquinaIzquierda && !esquinaDerecha){
+        if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 1.1){
+          std::cout << "SIGO RECTO" << std::endl;
+          forwardVel = 0.5;
+          rotateVel = 0;
         }
-        else{
-          rotateVel = 0.4;
-          std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+        else if(valueI > valueIzN+0.4 && valueF > 1.1){
+          std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
+          forwardVel = 0.5;
+          rotateVel = 0.3;
         }
-      }
-      else forwardVel = 0;
-    }
-    else if(esquinaIzquierda){
-      giroEsquinaIzquierda(valueI,valueF,valueD);
-    }
-    /**
-    else if(esquinaDerecha){
-      giroEsquinaDerecha(valueI,valueF,valueD);
-    }
-    */
-    else{
-      std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
-    }
-
-    valueIzExtAnt = valueIzExt;
-    valueDeExtAnt = valueDeExt;
-
-
-    /**
-    // Para que siga la pared izquierda
-    if(valueIzExt > valueIzExtAnt+0.5){
-      esquina = true;
-      std::cout << "ESQUINAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" << std::endl;
-      // Sacar la orientacion y no parar hasta que haya girado 90º??
-    }
-    if(!esquina){
-      if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 2){
-        std::cout << "SIGO RECTO" << std::endl;
-        forwardVel = 0.5;
-        rotateVel = 0;
-      }
-      else if(valueI > valueIzN+0.3 && valueF > 2){
-        std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
-        forwardVel = 0.5;
-        rotateVel = 0.3;
-      }
-      else if(valueI < valueIzN-0.3 && valueF > 2){
-        std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
-        forwardVel = 0.5;
-        rotateVel = -0.3;
-      }
-      // Hasta aqui es para que siga la pared izquierda
-      // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
-      else if(valueF < 2){
-        forwardVel = 0.1;
-        if(valueI < valueD){
-          std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
-          rotateVel = -0.4;
+        else if(valueI < valueIzN-0.4 && valueF > 1.1){
+          std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
+          forwardVel = 0.5;
+          rotateVel = -0.3;
         }
-        else{
-          rotateVel = 0.4;
-          std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+        // Hasta aqui es para que siga la pared izquierda
+        // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
+        
+        else if(valueF < 1.1){
+          forwardVel = 0.1;
+          if(valueI < valueD){
+            std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
+            rotateVel = -0.4;
+          }
+          else{
+            rotateVel = 0.4;
+            std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+          }
         }
+        else forwardVel = 0;
       }
-      else forwardVel = 0;
-    }
-    else if(esquina){
-      giroEsquina(valueI,valueF,valueD);
-    }
+      else if(esquinaIzquierda){
+        giroEsquinaIzquierda();
+      }
+      /**
+      else if(esquinaDerecha){
+        giroEsquinaDerecha();
+      }
+      */
+      else{
+        std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
+      }
 
-    valueIzExtAnt = valueIzExt;
-    */
+      valueIzExtAnt = valueIzExt;
+      valueDeExtAnt = valueDeExt;
+    }
   }
-
-/**
-  //! Loop forever while sending drive commands based on keyboard input
-  bool driveKeyboard()
-  {
-    std::cout << "Type a command and then press enter.  "
-      "Use '+' to move forward, 'l' to turn left, "
-      "'r' to turn right, '.' to exit.\n";
-
-    //we will be sending commands of type "twist"
-    geometry_msgs::Twist base_cmd;
-
-    char cmd[50];
-    while(nh_.ok()){
-
-      std::cin.getline(cmd, 50);
-      if(cmd[0]!='+' && cmd[0]!='l' && cmd[0]!='r' && cmd[0]!='.')
-      {
-        std::cout << "unknown command:" << cmd << "\n";
-        continue;
-      }
-
-      base_cmd.linear.x = base_cmd.linear.y = base_cmd.angular.z = 0;   
-      //move forward
-      if(cmd[0]=='+'){
-        base_cmd.linear.x = 0.25;
-      } 
-      //turn left (yaw) and drive forward at the same time
-      else if(cmd[0]=='l'){
-        base_cmd.angular.z = 0.75;
-        base_cmd.linear.x = 0.25;
-      } 
-      //turn right (yaw) and drive forward at the same time
-      else if(cmd[0]=='r'){
-        base_cmd.angular.z = -0.75;
-        base_cmd.linear.x = 0.25;
-      } 
-      //quit
-      else if(cmd[0]=='.'){
-        break;
-      }
-
-      //publish the assembled command
-      cmd_vel_pub_.publish(base_cmd);
-    }
-    return true;
-  }
-*/
 
   void bucle(){
     ros::Rate rate(10);
