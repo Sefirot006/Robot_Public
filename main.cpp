@@ -244,25 +244,11 @@ public:
     // 5.- Obtener Homografía
     // 6.- Aplicar transformación + Unir
     void FeatureDetector::detect(const Mat& image, vector<KeyPoint>& keypoints, const Mat& mask=Mat() ) const;
-
-
-    SurfFeatureDetector detector(400);
-    vector<KeyPoint> keypoints1;
-    detector.detect(img1, keypoints1);
-    // 3.- Calcular Descriptores (2A Key Points)
-    SurfDescriptorExtractor extractor;
-    Mat descriptors1;
-    extractor.compute(img1, keypoints1, descriptors1);
-    // 4.- Calcular Correspondencias (Filtrar)
-    BFMatcher matcher(NORM_L2);
-    vector<DMatch> matches;
-    matcher.match(descriptors1, descriptors2, matches);
-    // 5.- Obtener Homografía
-    // 6.- Aplicar transformación + Unir
-    void FeatureDetector::detect(const Mat& image, vector<KeyPoint>& keypoints, const Mat& mask=Mat() ) const;
 */ 
 
     std::cout << "Iniciando Panoramica!!" << std::endl;
+    //http://docs.opencv.org/2.4/doc/tutorials/features2d/feature_homography/feature_homography.html
+
 
     // 1.- Obtener 2 imágenes
     //cv::Mat image1 = cv_ptr_der->image;
@@ -270,7 +256,7 @@ public:
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
-    int minHessian = 50;
+    int minHessian = 900;
 
     cv::SurfFeatureDetector detector( minHessian );
     std::vector< cv::KeyPoint > keypoints_object, keypoints_scene;
@@ -278,6 +264,7 @@ public:
     detector.detect( cv_ptr_izq->image, keypoints_object );
     detector.detect( cv_ptr_der->image, keypoints_scene );
 
+    // 3.- Calcular Descriptores (2A Key Points)
     //-- Step 2: Calculate descriptors (feature vectors)
     cv::SurfDescriptorExtractor extractor;
 
@@ -285,6 +272,7 @@ public:
     extractor.compute( cv_ptr_izq->image, keypoints_object, descriptors_object );
     extractor.compute( cv_ptr_der->image, keypoints_scene, descriptors_scene );
 
+    // 4.- Calcular Correspondencias (Filtrar)
     //-- Step 3: Matching descriptor vectors using FLANN matcher
     cv::FlannBasedMatcher matcher;
     std::vector< cv::DMatch > matches;
@@ -315,20 +303,23 @@ public:
         obj.push_back( keypoints_object[ good_matches[i].queryIdx ].pt );
         scene.push_back( keypoints_scene[ good_matches[i].trainIdx ].pt );
     }
-    // Find the Homography Matrix
     try {
+      // 5.- Obtener Homografía
       std::cout << "--Homografia--" << std::endl;
+      // Find the Homography Matrix
       cv::Mat H = findHomography( obj, scene, CV_RANSAC );
+      // 6.- Aplicar transformación + Unir
       // Use the Homography Matrix to warp the images
       cv::Mat result;
       cv::warpPerspective(cv_ptr_izq->image,result,H,cv::Size(cv_ptr_izq->image.cols+cv_ptr_der->image.cols,cv_ptr_izq->image.rows));
       cv::Mat half(result,cv::Rect(0,0,cv_ptr_der->image.cols,cv_ptr_der->image.rows));
       cv_ptr_der->image.copyTo(half);
-      cv::namedWindow("Result");
+      // 7.- Ver resultado
+      cv::namedWindow("Resultado panoramica");
       cv::startWindowThread();
-      cv::imshow( "Result", result );
+      cv::imshow( "Resultado panoramica", result );
 
-      cv::waitKey(500);
+      cv::waitKey(30);
     } catch (cv::Exception e) {
       std::cerr << "Se ha detectado una exception al realizar la Homografía: " + e.err << std::endl;
     }
