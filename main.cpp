@@ -270,20 +270,20 @@ public:
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
-    int minHessian = 800;
+    int minHessian = 50;
 
     cv::SurfFeatureDetector detector( minHessian );
     std::vector< cv::KeyPoint > keypoints_object, keypoints_scene;
 
-    detector.detect( cv_ptr_der->image, keypoints_object );
-    detector.detect( cv_ptr_izq->image, keypoints_scene );
+    detector.detect( cv_ptr_izq->image, keypoints_object );
+    detector.detect( cv_ptr_der->image, keypoints_scene );
 
     //-- Step 2: Calculate descriptors (feature vectors)
     cv::SurfDescriptorExtractor extractor;
 
     cv::Mat descriptors_object, descriptors_scene;
-    extractor.compute( cv_ptr_der->image, keypoints_object, descriptors_object );
-    extractor.compute( cv_ptr_izq->image, keypoints_scene, descriptors_scene );
+    extractor.compute( cv_ptr_izq->image, keypoints_object, descriptors_object );
+    extractor.compute( cv_ptr_der->image, keypoints_scene, descriptors_scene );
 
     //-- Step 3: Matching descriptor vectors using FLANN matcher
     cv::FlannBasedMatcher matcher;
