@@ -1,5 +1,12 @@
 #include <iostream>
 
+#include <stdio.h>
+#include "opencv2/core/core.hpp"
+#include "opencv2/features2d/features2d.hpp"
+#include "opencv2/nonfree/features2d.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/nonfree/nonfree.hpp"
+
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
@@ -10,10 +17,9 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
-const bool debug = false;
+using namespace cv;
 
-void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg);
-void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg);
+const bool debug = true;
 
 class RobotDriver
 {
@@ -24,6 +30,8 @@ private:
   double valueIzExtAnt, valueDeExtAnt;
   double valueI, valueF, valueD, valueIzExt, valueDeExt;
   int contI, contF, contD, contIE, contDE;
+
+  cv::Mat normalized;
 
   // Orientacion del robot real
   double orientacion;
@@ -36,6 +44,7 @@ private:
 
   bool camIncorrecto;
   bool esquinaIzquierda, esquinaDerecha;
+  bool buscaRobot;
 
   // El mapa mide 20x20
   int mapaCarrera[20][20];
@@ -66,7 +75,7 @@ public:
     forwardVel = 0.0;
     rotateVel = 0.0;
 
-    valueIzN = 1.5; valueDeN = 4.5;
+    valueIzN = 1.8; valueDeN = 4.2;
     valueIzExtAnt = 10; valueDeExtAnt = 10;
     valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
     contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
@@ -74,6 +83,7 @@ public:
     esquinaIzquierda = false;
     esquinaDerecha = false;
     camIncorrecto = false;
+    buscaRobot = false;
 
     // Inicializacion del mapa
     for(unsigned i=0;i<20;++i){
@@ -86,6 +96,10 @@ public:
 
     //ultimoGiro = ' ';
     
+    frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
+    rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
+    rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
+
     //set up the publisher for the cmd_vel topic
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
     
@@ -93,15 +107,11 @@ public:
     // imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
 
     // ModelStatesMessage
-    ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
+    //ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
     // Para la navegacion
     laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
     // Para sacar el tamaño del robot en el laser
     //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::compruebaRobot, this);
-
-    frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
-    rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
-    rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
   }
   
   //sensor_msgs/Imu
@@ -123,10 +133,12 @@ public:
   // El robot 2 esta en la i = 53
   void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
     unsigned suma = 0;
-    ROS_INFO_STREAM("Nombre: " << msg->name[53]);
-    ROS_INFO_STREAM("Posicion: \n" << msg->pose[53].position);
-    posRobot.x = msg->pose[53].position.x+10;
-    posRobot.y = msg->pose[53].position.y+10;
+    //ROS_INFO_STREAM("Nombre: " << msg->name[53]);
+    //ROS_INFO_STREAM("Posicion: \n" << msg->pose[53].position);
+    posRobot.x = msg->pose[53].position.x+9;
+    posRobot.y = msg->pose[53].position.y+9;
+    std::cout << "Posicion X en la matriz: " << posRobot.x << std::endl;
+    std::cout << "Posicion Y en la matriz: " << posRobot.y << std::endl;
 
     //ROS_INFO_STREAM("Orientacion: \n" << msg->pose[53].orientation);
     orientacion = atan2(2*(msg->pose[53].orientation.x*msg->pose[53].orientation.y + msg->pose[53].orientation.w*msg->pose[53].orientation.z), 
@@ -138,7 +150,7 @@ public:
     std::cout << "Orientacion despues del calculo: " << orientacion << std::endl << std::endl;
 
     // Comprobar si nos hemos dado la vuelta o no
-    if(orientacion > -0.75 && orientacion < 0.75){
+    if(orientacion > -0.8 && orientacion < 0.8 && posRobot.x+2<19 && posRobot.x-2>0){
       // Avanzas hacia el sur
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
       mapaCarrera[posRobot.x][posRobot.y-1] = 1;
@@ -147,7 +159,8 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x+2][posRobot.y-1] + mapaCarrera[posRobot.x+2][posRobot.y] + mapaCarrera[posRobot.x+2][posRobot.y+1];
-    } else if(orientacion < -0.75 && orientacion > -2.25){
+      std::cout << "suma: " << mapaCarrera[posRobot.x+2][posRobot.y-1] << "+" << mapaCarrera[posRobot.x+2][posRobot.y] << "+" << mapaCarrera[posRobot.x+2][posRobot.y+1] << "=" << suma << std::endl;
+    } else if(orientacion < -0.75 && orientacion > -2.25 && posRobot.y+2<19 && posRobot.y-2>0){
       // Avanzas hacia el oeste
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
       mapaCarrera[posRobot.x-1][posRobot.y] = 1;
@@ -156,8 +169,8 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x-1][posRobot.y-2] + mapaCarrera[posRobot.x][posRobot.y-2] + mapaCarrera[posRobot.x+1][posRobot.y-2];
-
-    } else if(orientacion < -2.25 && orientacion < 2.25){
+      std::cout << "suma: " << mapaCarrera[posRobot.x-1][posRobot.y-2] << "+" << mapaCarrera[posRobot.x][posRobot.y-2] << "+" << mapaCarrera[posRobot.x+1][posRobot.y-2] << "=" << suma << std::endl;
+    } else if(orientacion < -2.25 && orientacion < 2.25 && posRobot.x+2<19 && posRobot.x-2>0){
       // Avanzas hacia el norte
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
       mapaCarrera[posRobot.x][posRobot.y-1] = 1;
@@ -166,8 +179,8 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x-2][posRobot.y-1] + mapaCarrera[posRobot.x-2][posRobot.y] + mapaCarrera[posRobot.x-2][posRobot.y+1];
-    
-    } else {
+      std::cout << "suma: " << mapaCarrera[posRobot.x-2][posRobot.y-1] << "+" << mapaCarrera[posRobot.x-2][posRobot.y] << "+" << mapaCarrera[posRobot.x-2][posRobot.y+1] << "=" << suma << std::endl;
+    } else if(orientacion > 0.75 && orientacion < 2.25 && posRobot.y+2<19 && posRobot.y-2>0){
       // Avanzas hacia el este
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
       mapaCarrera[posRobot.x-1][posRobot.y] = 1;
@@ -176,15 +189,16 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x-1][posRobot.y+2] + mapaCarrera[posRobot.x][posRobot.y+2] + mapaCarrera[posRobot.x+1][posRobot.y+2];
+      std::cout << "suma: " << mapaCarrera[posRobot.x-1][posRobot.y+2] << "+" << mapaCarrera[posRobot.x][posRobot.y+2] << "+" << mapaCarrera[posRobot.x+1][posRobot.y+2] << "=" << suma << std::endl;
     }
 
     // Si la suma es > 2 y el camino es el correcto
     if(suma > 2 && !camIncorrecto){
       camIncorrecto = true;
       if(orientacion>0)
-        orientacionGiro = orientacion-3;
+        orientacionGiro = orientacion-2.25;
       else
-        orientacionGiro = orientacion+3;
+        orientacionGiro = orientacion+2.25;
       std::cout << "OJO QUE ESTAS YENDO AL REVES" <<std::endl;
     }
   }
@@ -240,7 +254,7 @@ public:
     std::cout << "GIRANDO POR LA FUNCION ESQUINA IZQUIERDA!!" << std::endl;
     if(valueF<5 && valueF>1.5){
       rotateVel = 0.4;
-      forwardVel = 0.2;
+      forwardVel = 0.25;
     }
     else{
       esquinaIzquierda = false;
@@ -256,10 +270,64 @@ public:
       rotateVel = 0.4;
       forwardVel = 0;
     }
+  }
 
+  bool encuentraRobot(){
+    Mat img_1 = imread( "./robotSolitario1.png", CV_LOAD_IMAGE_GRAYSCALE );
+
+    if( !img_1.data )
+      { std::cout<< " --(!) Error reading images " << std::endl; return -1; }
+
+    // Detectar los keypoints
+    SurfFeatureDetector detector(400);
+    std::vector<KeyPoint> keypoints_1, keypoints_2;
+    detector.detect(img_1, keypoints_1);
+    detector.detect(normalized, keypoints_2);
+    // Calcular los descriptores de los keypoints
+    SurfDescriptorExtractor extractor;
+    Mat descriptors1, descriptors2;
+    extractor.compute(img_1,keypoints_1,descriptors1);
+    extractor.compute(normalized,keypoints_2,descriptors2);
+
+    // Buscar coincidencias en los descriptores
+    BFMatcher matcher(NORM_L2);
+    vector<DMatch> matches;
+
+    matcher.match(descriptors1, descriptors2, matches);
+
+    double max_dist = 0; double min_dist = 100;
+
+    //-- Quick calculation of max and min distances between keypoints
+    for( int i = 0; i < descriptors1.rows; i++ )
+    { 
+      double dist = matches[i].distance;
+      if( dist < min_dist ) min_dist = dist;
+      if( dist > max_dist ) max_dist = dist;
+    }
+
+    printf("-- Max dist : %f \n", max_dist );
+    printf("-- Min dist : %f \n", min_dist );
+
+    //-- Draw only "good" matches (i.e. whose distance is less than 3*min_dist )
+    std::vector< DMatch > good_matches;
+
+    for( int i = 0; i < descriptors1.rows; i++ )
+    { if( matches[i].distance < 4*min_dist )
+      { good_matches.push_back( matches[i]); }
+    }
+
+    if(good_matches.size()>14){
+      std::cout << "ES UN FUCKING ROBOT" << std::endl;
+      return true;
+    }
+    else{
+      std::cout << "NO ES UN FUCKING ROBOT PUTA" << std::endl;
+      return false;
+    }
   }
 
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
+    std::cout << "HAGO procesaDatosLaser" << std::endl;
     if(debug){
       // Mínimo valor angular del láser -0.521568
       ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
@@ -295,7 +363,7 @@ public:
         }
       }
       // 150
-      if(i>=244 && i<394){
+      if(i>=219 && i<419){
         if(!std::isnan(msg->ranges[i])){
           valueF += msg->ranges[i];
           contF++;
@@ -349,25 +417,34 @@ public:
         std::cout << "ESQUINAAAAAAAAAAAAA DERECHA" << std::endl;
       }*/
       if(!esquinaIzquierda && !esquinaDerecha){
-        if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 1.1){
+        if(valueF==0.1)
+          forwardVel = -0.5;
+        else if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 1.1){
           std::cout << "SIGO RECTO" << std::endl;
           forwardVel = 0.5;
           rotateVel = 0;
+          buscaRobot=false;
         }
         else if(valueI > valueIzN+0.4 && valueF > 1.1){
           std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
           forwardVel = 0.5;
           rotateVel = 0.3;
+          buscaRobot = false;
         }
         else if(valueI < valueIzN-0.4 && valueF > 1.1){
           std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
           forwardVel = 0.5;
           rotateVel = -0.3;
+          buscaRobot = false;
         }
         // Hasta aqui es para que siga la pared izquierda
         // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
         
         else if(valueF < 1.1){
+          buscaRobot = true;
+          //if(encuentraRobot()){
+            //std::cout << "ESTOY VIENDO A UN ROBOT DELANTE A MENOS DE 1 METRO!!" << std::endl;
+          //}
           forwardVel = 0.1;
           if(valueI < valueD){
             std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
@@ -418,8 +495,6 @@ public:
     }
   }
 
-};
-
 void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
    cv::namedWindow("view");
    cv::startWindowThread();
@@ -433,6 +508,7 @@ void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
 }
 
 void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
+  std::cout << "HAGO PRIMERO verCamaraFrontalNormalizada" << std::endl;
    cv::namedWindow("view");
    cv::startWindowThread();
    try {
@@ -444,15 +520,19 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
       // for visualization purposes.
       double max = 0.0;
       cv::minMaxLoc(cv_ptr->image, 0, &max, 0, 0);
-      cv::Mat normalized;
+      
       cv_ptr->image.convertTo(normalized, CV_32F, 1.0/max, 0);
 
+      Mat prueba = cv_ptr;
       cv::imshow("view", normalized);
       cv::waitKey(1);
    } catch (const cv_bridge::Exception& e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
    }
 }
+
+};
+
 
 int main(int argc, char** argv){   //init the ROS node
    ros::init(argc, argv, "robot_driver");
