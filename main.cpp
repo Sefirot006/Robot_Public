@@ -16,6 +16,7 @@
 
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
+#include <sys/resource.h>
 
 cv::Mat normalizaImagen(const cv::Mat& m);
 void mostrarImagenEnVentana(cv::Mat image);
@@ -39,6 +40,9 @@ private:
   double valueI, valueF, valueD, valueIzExt, valueDeExt;
   int contI, contF, contD, contIE, contDE;
 
+  long double tiempoTurboActivado;
+  long double tiempoTurboDesactivado;
+
   // Orientacion del robot real
   double orientacion;
   // Orientacion del robot antes de dar la vuelta
@@ -50,7 +54,7 @@ private:
 
   bool camIncorrecto;
   bool esquinaIzquierda, esquinaDerecha;
-  bool buscaRobot;
+  bool turbo;
 
   // El mapa mide 20x20
   int mapaCarrera[20][20];
@@ -87,11 +91,14 @@ public:
     valueIzExtAnt = 10; valueDeExtAnt = 10;
     valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
     contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
+
+    tiempoTurboActivado = 5;
+    tiempoTurboDesactivado = 10;
     
     esquinaIzquierda = false;
     esquinaDerecha = false;
     camIncorrecto = false;
-    buscaRobot = false;
+    turbo = false;
 
     // Inicializacion del mapa
     for(unsigned i=0;i<20;++i){
@@ -147,12 +154,12 @@ public:
   // El robot 2 esta en la i = 53
   void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
     unsigned suma = 0;
-    ROS_INFO_STREAM("Nombre: " << msg->name[53]);
+    //ROS_INFO_STREAM("Nombre: " << msg->name[53]);
     //ROS_INFO_STREAM("Posicion: \n" << msg->pose[53].position);
     posRobot.x = msg->pose[53].position.x+9;
     posRobot.y = msg->pose[53].position.y+9;
-    std::cout << "Posicion X en la matriz: " << posRobot.x << std::endl;
-    std::cout << "Posicion Y en la matriz: " << posRobot.y << std::endl;
+    //std::cout << "Posicion X en la matriz: " << posRobot.x << std::endl;
+    //std::cout << "Posicion Y en la matriz: " << posRobot.y << std::endl;
 
     //ROS_INFO_STREAM("Orientacion: \n" << msg->pose[53].orientation);
     orientacion = atan2(2*(msg->pose[53].orientation.x*msg->pose[53].orientation.y + msg->pose[53].orientation.w*msg->pose[53].orientation.z), 
@@ -161,7 +168,7 @@ public:
         msg->pose[53].orientation.y*msg->pose[53].orientation.y - 
         msg->pose[53].orientation.z*msg->pose[53].orientation.z);
 
-    std::cout << "Orientacion despues del calculo: " << orientacion << std::endl << std::endl;
+    //std::cout << "Orientacion despues del calculo: " << orientacion << std::endl << std::endl;
 
     // Comprobar si nos hemos dado la vuelta o no
     if(orientacion > -0.8 && orientacion < 0.8 && posRobot.x+2<19 && posRobot.x-2>0){
@@ -173,7 +180,7 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x+2][posRobot.y-1] + mapaCarrera[posRobot.x+2][posRobot.y] + mapaCarrera[posRobot.x+2][posRobot.y+1];
-      std::cout << "suma: " << mapaCarrera[posRobot.x+2][posRobot.y-1] << "+" << mapaCarrera[posRobot.x+2][posRobot.y] << "+" << mapaCarrera[posRobot.x+2][posRobot.y+1] << "=" << suma << std::endl;
+      //std::cout << "suma: " << mapaCarrera[posRobot.x+2][posRobot.y-1] << "+" << mapaCarrera[posRobot.x+2][posRobot.y] << "+" << mapaCarrera[posRobot.x+2][posRobot.y+1] << "=" << suma << std::endl;
     } else if(orientacion < -0.75 && orientacion > -2.25 && posRobot.y+2<19 && posRobot.y-2>0){
       // Avanzas hacia el oeste
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
@@ -183,7 +190,7 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x-1][posRobot.y-2] + mapaCarrera[posRobot.x][posRobot.y-2] + mapaCarrera[posRobot.x+1][posRobot.y-2];
-      std::cout << "suma: " << mapaCarrera[posRobot.x-1][posRobot.y-2] << "+" << mapaCarrera[posRobot.x][posRobot.y-2] << "+" << mapaCarrera[posRobot.x+1][posRobot.y-2] << "=" << suma << std::endl;
+      //std::cout << "suma: " << mapaCarrera[posRobot.x-1][posRobot.y-2] << "+" << mapaCarrera[posRobot.x][posRobot.y-2] << "+" << mapaCarrera[posRobot.x+1][posRobot.y-2] << "=" << suma << std::endl;
     } else if(orientacion < -2.25 && orientacion < 2.25 && posRobot.x+2<19 && posRobot.x-2>0){
       // Avanzas hacia el norte
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
@@ -193,7 +200,7 @@ public:
       
       // comprueba si ya has ido hacia esa posicion
       suma = mapaCarrera[posRobot.x-2][posRobot.y-1] + mapaCarrera[posRobot.x-2][posRobot.y] + mapaCarrera[posRobot.x-2][posRobot.y+1];
-      std::cout << "suma: " << mapaCarrera[posRobot.x-2][posRobot.y-1] << "+" << mapaCarrera[posRobot.x-2][posRobot.y] << "+" << mapaCarrera[posRobot.x-2][posRobot.y+1] << "=" << suma << std::endl;
+      //std::cout << "suma: " << mapaCarrera[posRobot.x-2][posRobot.y-1] << "+" << mapaCarrera[posRobot.x-2][posRobot.y] << "+" << mapaCarrera[posRobot.x-2][posRobot.y+1] << "=" << suma << std::endl;
     } else if(orientacion > 0.75 && orientacion < 2.25 && posRobot.y+2<19 && posRobot.y-2>0){
       // Avanzas hacia el este
       // Pon la posicion del mapa interno a 1 dnd estas y en tu linea
@@ -205,7 +212,7 @@ public:
       suma = mapaCarrera[posRobot.x-1][posRobot.y+2] + mapaCarrera[posRobot.x][posRobot.y+2] + mapaCarrera[posRobot.x+1][posRobot.y+2];
       if(suma>3)
         suma = 0;
-      std::cout << "suma: " << mapaCarrera[posRobot.x-1][posRobot.y+2] << "+" << mapaCarrera[posRobot.x][posRobot.y+2] << "+" << mapaCarrera[posRobot.x+1][posRobot.y+2] << "=" << suma << std::endl;
+      //std::cout << "suma: " << mapaCarrera[posRobot.x-1][posRobot.y+2] << "+" << mapaCarrera[posRobot.x][posRobot.y+2] << "+" << mapaCarrera[posRobot.x+1][posRobot.y+2] << "=" << suma << std::endl;
     }
 
     // Si la suma es > 2 y el camino es el correcto
@@ -215,7 +222,7 @@ public:
         orientacionGiro = orientacion-2.25;
       else
         orientacionGiro = orientacion+2.25;
-      std::cout << "OJO QUE ESTAS YENDO AL REVES" <<std::endl;
+      //std::cout << "OJO QUE ESTAS YENDO AL REVES" <<std::endl;
     }
   }
 
@@ -279,18 +286,20 @@ public:
     std::cout << "Iniciando Panoramica!!" << std::endl;
 
     // 1.- Obtener 2 imágenes
-    cv::Mat image1 = normalizaImagen(cv_ptr_der->image);
-    cv::Mat image2 = normalizaImagen(cv_ptr_izq->image);
-    cv::namedWindow("Prueba");
-    cv::startWindowThread();
-    cv::imshow( "Prueba", image2 );
-    cv::namedWindow("Prueba1");
-    cv::startWindowThread();
-    cv::imshow( "Prueba1", image1 );
+    // cv::Mat image1 = normalizaImagen(cv_ptr_der->image);
+    // cv::Mat image2 = normalizaImagen(cv_ptr_izq->image);
+    cv::Mat image1 = cv_ptr_der->image;
+    cv::Mat image2 = cv_ptr_izq->image;
+    // cv::namedWindow("Prueba");
+    // cv::startWindowThread();
+    // cv::imshow( "Prueba", image2 );
+    // cv::namedWindow("Prueba1");
+    // cv::startWindowThread();
+    // cv::imshow( "Prueba1", image1 );
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
-    int minHessian = 2000;
+    int minHessian = 80;
 
     cv::SurfFeatureDetector detector( minHessian );
     std::vector< cv::KeyPoint > keypoints_object, keypoints_scene;
@@ -308,9 +317,14 @@ public:
 
     // 4.- Calcular Correspondencias (Filtrar)
     //-- Step 3: Matching descriptor vectors using FLANN matcher
-    cv::FlannBasedMatcher matcher;
+    cv::BFMatcher matcher;
     std::vector< cv::DMatch > matchesBack;
-    matcher.match( descriptors_object, descriptors_scene, matchesBack );
+    try{
+      matcher.match( descriptors_object, descriptors_scene, matchesBack );
+    } catch (cv::Exception e) {
+      std::cerr << "Se ha detectado una exception al realizar el match: " + e.err << std::endl;
+      return;
+    }
     double max_dist = 0; 
     double min_dist = 100;
 
@@ -356,6 +370,7 @@ public:
       cv::waitKey(30);
     } catch (cv::Exception e) {
       std::cerr << "Se ha detectado una exception al realizar la Homografía: " + e.err << std::endl;
+      return ;
     }
   }
 
@@ -384,7 +399,7 @@ public:
    }
 
   void giroEsquinaIzquierda(){
-    std::cout << "GIRANDO POR LA FUNCION ESQUINA IZQUIERDA!!" << std::endl;
+    //std::cout << "GIRANDO POR LA FUNCION ESQUINA IZQUIERDA!!" << std::endl;
     if(valueF<5 && valueF>1.5){
       rotateVel = 0.4;
       forwardVel = 0.25;
@@ -395,7 +410,7 @@ public:
   }
 
   void darVueltaRobot(){
-    std::cout << "MI ORIENTACION ACTUAL ES: " << orientacion << ", Y LA ORIENTACION A LA QUE TENGO QUE LLEGAR ES: " << orientacionGiro << "\n";
+    //std::cout << "MI ORIENTACION ACTUAL ES: " << orientacion << ", Y LA ORIENTACION A LA QUE TENGO QUE LLEGAR ES: " << orientacionGiro << "\n";
     if(orientacion<orientacionGiro+0.2 && orientacion>orientacionGiro-0.2){
       camIncorrecto = false;
     }
@@ -422,16 +437,16 @@ public:
       if( dist > max_dist ) max_dist = dist;
     }
 
-    printf("-- Max dist : %f \n", max_dist );
-    printf("-- Min dist : %f \n", min_dist );
+    //printf("-- Max dist : %f \n", max_dist );
+    //printf("-- Min dist : %f \n", min_dist );
 
     for( int i = 0; i < descriptorRobot.rows; i++ )
     { if( matches[i].distance < 3*min_dist && matches[i].distance < 0.125 )
       { good_matches.push_back( matches[i]); }
     }
 
-    if(good_matches.size()>2){
-      std::cout << "ES UN FUCKING ROBOT" << std::endl;
+    if(good_matches.size()>4){
+      //std::cout << "ES UN FUCKING ROBOT" << std::endl;
       std::cout << "good_matches: " << good_matches.size() << std::endl;
       return true;
     }
@@ -444,17 +459,17 @@ public:
     // Detectar los keypoints
     SurfFeatureDetector detector(900);
     std::vector<KeyPoint> keypoints_2;
-    std::cout <<"PASO 1" << std::endl;
+    //std::cout <<"PASO 1" << std::endl;
     detector.detect(cv_ptr_frontal->image, keypoints_2);
-    std::cout <<"PASO 2" << std::endl;
+    //std::cout <<"PASO 2" << std::endl;
     // Calcular los descriptores de los keypoints
     if(keypoints_2.size()!=0){
       SurfDescriptorExtractor extractor;
       Mat descriptors2;
       //extractor.compute(img_back,keypoints_1,descriptorsBack);
-      std::cout <<"PASO 3" << std::endl;
+      //std::cout <<"PASO 3" << std::endl;
       extractor.compute(cv_ptr_frontal->image,keypoints_2,descriptors2);
-      std::cout <<"PASO 4" << std::endl;
+      //std::cout <<"PASO 4" << std::endl;
 
       // Buscar coincidencias en los descriptores
       BFMatcher matcher(NORM_L2);
@@ -472,25 +487,25 @@ public:
         return false;
     }
     else{
-      std::cout << "BLABLABLABLABLABLABLABLABLABLA" << std::endl;
+      //std::cout << "BLABLABLABLABLABLABLABLABLABLA" << std::endl;
       return false;
     }
   }
 
   void procesaDatosLaser(const sensor_msgs::LaserScan::ConstPtr& msg){
-    std::cout << "HAGO procesaDatosLaser" << std::endl;
+    //std::cout << "HAGO procesaDatosLaser" << std::endl;
     if(debug){
       // Mínimo valor angular del láser -0.521568
-      ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
+      //ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
       // Máximo valor angular del láser 0.524276
-      ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
+     // ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
       // Incremento angular entre dos beams 0.00163669
-      ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
+      //ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
       // Mínimo valor que devuelve el láser 0.45
-      ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
+     //ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
       // Máximo valor que devuelve el láser. Valores por debajo y 
       // por encima de estos rangos no deben ser tenidos en cuenta 10
-      ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
+      //ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
     }
     // Me esta dando 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
@@ -537,7 +552,7 @@ public:
       //std::cout << "i " << i << ": " << msg->ranges[i] << std::endl;
     }
     valueDeExt /= contDE;
-    ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
+    //ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
     valueD /= contD;
     ROS_INFO_STREAM("ValueD:" << valueD << "; " << contD); // Acceso a los valores de rango
     valueF /= contF;
@@ -545,11 +560,11 @@ public:
     valueI /= contI;
     ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
     valueIzExt /= contIE;
-    std::cout << "valueIzExtAnt: " << valueIzExtAnt << std::endl;
-    ROS_INFO_STREAM("valueIzExt:" << valueIzExt << "; " << contIE); // Acceso a los valores de rango
-    std::cout << "valueDeExtAnt: " << valueDeExtAnt << std::endl;
-    ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
-    std::cout << std::endl;
+    //std::cout << "valueIzExtAnt: " << valueIzExtAnt << std::endl;
+    //ROS_INFO_STREAM("valueIzExt:" << valueIzExt << "; " << contIE); // Acceso a los valores de rango
+    //std::cout << "valueDeExtAnt: " << valueDeExtAnt << std::endl;
+    //ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
+    //std::cout << std::endl;
 
     // rotateVel positivo gira a la izquierda
     // rotateVel negativo gira a la derecha
@@ -560,58 +575,104 @@ public:
     }else{
       if(valueIzExt > valueIzExtAnt+0.5){
         esquinaIzquierda = true;
-        std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
+        //std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
         // Sacar la orientacion y no parar hasta que haya girado 90º??
       }
      
       if(!esquinaIzquierda && !esquinaDerecha){
         if(valueF==0.1)
           forwardVel = -0.5;
-        else if((valueI < valueIzN+0.5 && valueI > valueIzN-0.5) && valueF > 1.1){
-          std::cout << "SIGO RECTO" << std::endl;
-          forwardVel = 0.5;
+        else if((valueI < valueIzN+0.3 && valueI > valueIzN-0.3) && valueF > 1.1){
+          //std::cout << "SIGO RECTO" << std::endl;
+
+          if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
+            forwardVel = 0.9;
+          else if(turbo && tiempoTurboActivado>0)
+            forwardVel = 0.9;
+          else{
+            forwardVel = 0.5;
+            turbo = false;
+          }
+          /**
+          if(!turbo)
+            forwardVel = 0.5;
+          else
+            forwardVel = 0.9;
+            */
           rotateVel = 0;
-          buscaRobot=false;
         }
-        else if(valueI > valueIzN+0.4 && valueF > 1.1){
-          std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
-          forwardVel = 0.5;
+        else if(valueI > valueIzN+0.3 && valueF > 1.1){
+          //std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
+          if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
+            forwardVel = 0.9;
+          else if(turbo && tiempoTurboActivado>0)
+            forwardVel = 0.9;
+          else{
+            forwardVel = 0.5;
+            turbo = false;
+          }
+          /**
+          if(!turbo)
+            forwardVel = 0.5;
+          else
+            forwardVel = 0.9;
+          */
           rotateVel = 0.3;
-          buscaRobot = false;
         }
-        else if(valueI < valueIzN-0.4 && valueF > 1.1){
-          std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
-          forwardVel = 0.5;
+        else if(valueI < valueIzN-0.3 && valueF > 1.1){
+          //std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
+          if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
+            forwardVel = 0.9;
+          else if(turbo && tiempoTurboActivado>0)
+            forwardVel = 0.9;
+          else{
+            forwardVel = 0.5;
+            turbo = false;
+          }
+          /**
+          if(!turbo)
+            forwardVel = 0.5;
+          else
+            forwardVel = 0.9;
+          */
           rotateVel = -0.3;
-          buscaRobot = false;
         }
         // Hasta aqui es para que siga la pared izquierda
         // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
         
         else if(valueF < 1.1){
-          buscaRobot = true;
           if(cv_ptr_frontal != 0){
-            if(encuentraRobot()){
+            if(encuentraRobot() && tiempoTurboDesactivado > 5){
+              turbo = true;
               std::cout << "ESTOY VIENDO A UN ROBOT DELANTE A MENOS DE 1 METRO!!" << std::endl;
+            }
+            else{
+              turbo = false;
+              forwardVel = 0.5;
             }
           }
           forwardVel = 0.1;
           if(valueI < valueD){
-            std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
+            //std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
             rotateVel = -0.4;
           }
           else{
             rotateVel = 0.4;
-            std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+            //std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
           }
         }
-        else forwardVel = 0;
+        else forwardVel = 0.5;
       }
       else if(esquinaIzquierda){
         giroEsquinaIzquierda();
       }
+      /**
+      else if(turbo){
+        navegacionTurbo();
+      }
+      */
       else{
-        std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
+        //std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
       }
       valueIzExtAnt = valueIzExt;
       valueDeExtAnt = valueDeExt;
@@ -621,16 +682,36 @@ public:
   void bucle(){
     ros::Rate rate(10);
     
-    std::cout << "Iniciando bucle para siempre" << std::endl;
+    
+    //std::cout << "Iniciando bucle para siempre" << std::endl;
     while (ros::ok()){
+      long double tiemp = getTickCount();
       geometry_msgs::Twist base_cmd; // Este mensaje es el que se publicara para decir las velocidades linear y angular del robot
       base_cmd.linear.x = forwardVel; // Velocidad linear que tendra el colega
       base_cmd.angular.z = rotateVel; // Velocidad angular que tendra el colega
 
       //publish the assembled command
       cmd_vel_pub_.publish(base_cmd);
+
       ros::spinOnce(); // Se procesaran todas las llamadas que queden pendientes (como procesaDatosLaser)
       rate.sleep(); // Con esto esperara a que acabe el ciclo
+      long double tFinal = (getTickCount()-tiemp)/getTickFrequency();
+
+      if((tiempoTurboDesactivado>0 && tiempoTurboDesactivado<10) || turbo){
+        tiempoTurboActivado -= tFinal;
+        tiempoTurboDesactivado -= tFinal;
+      }else if(tiempoTurboDesactivado<0){
+        tiempoTurboDesactivado = 10;
+        tiempoTurboActivado = 5;
+      }
+      std::cout << "tiempo turbo activado: " << tiempoTurboActivado << std::endl;
+      std::cout << "tiempo turbo desactivado: " << tiempoTurboDesactivado << std::endl;
+      std::cout << "Velocidad: " << forwardVel << std::endl;
+      std::cout << "turbo: " << turbo << std::endl;
+      std::cout << std::endl;
+
+
+      //std::cout << "TIEMPOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: " << tFinal << std::endl;
       if (debug)
         verPanoramica();
     }
@@ -698,6 +779,17 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
    } catch (const cv_bridge::Exception& e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
    }
+}
+
+long double
+tiempo(void){
+ struct rusage usage;
+ getrusage(RUSAGE_SELF,&usage);
+ return( (long double) usage.ru_utime.tv_sec +
+     (long double) usage.ru_utime.tv_usec/1e6
+     /* + (long double) usage.ru_stime.tv_sec +
+         (long double) usage.ru_stime.tv_usec/1e6 */
+       );
 }
 
 };
