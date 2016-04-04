@@ -65,7 +65,6 @@ private:
 
   ros::Subscriber laserSub;
   ros::Subscriber ms;
-  ros::Subscriber imu;
 
   ros::Subscriber frontRGBSub;
   ros::Subscriber rearRGB1Sub;
@@ -101,9 +100,9 @@ public:
       }
     }
 
-    Mat img_back = imread( "./robotSolitario1.png", CV_LOAD_IMAGE_GRAYSCALE );
+    Mat img_back  = imread( "./robotSolitario1.png", CV_LOAD_IMAGE_GRAYSCALE );
     Mat img_front = imread( "./robotSolitarioGiradoFrontal.png", CV_LOAD_IMAGE_GRAYSCALE );
-    Mat img_left = imread( "./robotSolitarioGiradoIzq.png", CV_LOAD_IMAGE_GRAYSCALE );
+    Mat img_left  = imread( "./robotSolitarioGiradoIzq.png", CV_LOAD_IMAGE_GRAYSCALE );
     Mat img_right = imread( "./robotSolitarioGiradoDerecha.png", CV_LOAD_IMAGE_GRAYSCALE );
 
     if( !img_back.data || !img_front.data || !img_left.data || !img_right.data)
