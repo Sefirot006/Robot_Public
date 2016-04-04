@@ -403,6 +403,40 @@ public:
     }
   }
 
+  bool buscaCoincidencias(Mat descriptorRobot, Mat descriptorImagen){
+    BFMatcher matcher(NORM_L2);
+    vector<DMatch> matches;
+
+    matcher.match(descriptorRobot, descriptorImagen, matches);
+
+    double max_dist = 0; double min_dist = 100;
+
+    std::vector< DMatch > good_matches;
+
+    for( int i = 0; i < descriptorRobot.rows; i++ )
+    { 
+      double dist = matches[i].distance;
+      if( dist < min_dist ) min_dist = dist;
+      if( dist > max_dist ) max_dist = dist;
+    }
+
+    printf("-- Max dist : %f \n", max_dist );
+    printf("-- Min dist : %f \n", min_dist );
+
+    for( int i = 0; i < descriptorRobot.rows; i++ )
+    { if( matches[i].distance < 3*min_dist && matches[i].distance < 0.125 )
+      { good_matches.push_back( matches[i]); }
+    }
+
+    if(good_matches.size()>2){
+      std::cout << "ES UN FUCKING ROBOT" << std::endl;
+      std::cout << "good_matches: " << good_matches.size() << std::endl;
+      return true;
+    }
+    else{
+      return false;
+    }
+  }
 
   bool encuentraRobot(){
     // Detectar los keypoints
@@ -424,100 +458,16 @@ public:
       BFMatcher matcher(NORM_L2);
       vector<DMatch> matchesBack, matchesLeft, matchesRight, matchesFront;
 
-      matcher.match(descriptorsBack, descriptors2, matchesBack);
-      
-      double max_dist = 0; double min_dist = 100;
-
-      //-- Draw only "good" matchesBack (i.e. whose distance is less than 3*min_dist )
-      std::vector< DMatch > good_matchesBack, good_matchesRight, good_matchesLeft, good_matchesFront;
-
-      //-- Quick calculation of max and min distances between keypoints
-      for( int i = 0; i < descriptorsBack.rows; i++ )
-      { 
-        double dist = matchesBack[i].distance;
-        if( dist < min_dist ) min_dist = dist;
-        if( dist > max_dist ) max_dist = dist;
-      }
-
-      printf("-- Max dist : %f \n", max_dist );
-      printf("-- Min dist : %f \n", min_dist );
-
-      for( int i = 0; i < descriptorsBack.rows; i++ )
-      { if( matchesBack[i].distance < 3*min_dist && matchesBack[i].distance < 0.125 )
-        { good_matchesBack.push_back( matchesBack[i]); }
-      }
-
-      if(good_matchesBack.size()>2){
-        std::cout << "ES UN FUCKING ROBOT" << std::endl;
-        std::cout << "good_matchesBack: " << good_matchesBack.size() << std::endl;
+      if(buscaCoincidencias(descriptorsBack, descriptors2))
         return true;
-      }
-      else{
-        matcher.match(descriptorsRight, descriptors2, matchesRight);
-        for( int i = 0; i < descriptorsRight.rows; i++ )
-        { 
-          double dist = matchesRight[i].distance;
-          if( dist < min_dist ) min_dist = dist;
-          if( dist > max_dist ) max_dist = dist;
-        }
-        printf("-- Max dist : %f \n", max_dist );
-        printf("-- Min dist : %f \n", min_dist );
-        for( int i = 0; i < descriptorsRight.rows; i++ )
-        { if( matchesRight[i].distance < 3*min_dist && matchesRight[i].distance < 0.125 )
-          { good_matchesRight.push_back( matchesRight[i]); }
-        }
-
-        if(good_matchesRight.size()>2){
-          std::cout << "ES UN FUCKING ROBOT" << std::endl;
-          std::cout << "good_matchesRight: " << good_matchesRight.size() << std::endl;
-          return true;
-        }
-        else{
-          matcher.match(descriptorsLeft, descriptors2, matchesLeft);
-          for( int i = 0; i < descriptorsLeft.rows; i++ )
-          { 
-            double dist = matchesLeft[i].distance;
-            if( dist < min_dist ) min_dist = dist;
-            if( dist > max_dist ) max_dist = dist;
-          }
-          printf("-- Max dist : %f \n", max_dist );
-          printf("-- Min dist : %f \n", min_dist );
-          for( int i = 0; i < descriptorsLeft.rows; i++ )
-          { if( matchesLeft[i].distance < 3*min_dist && matchesLeft[i].distance < 0.125 )
-            { good_matchesLeft.push_back( matchesLeft[i]); }
-          }
-          if(good_matchesLeft.size()>2){
-            std::cout << "ES UN FUCKING ROBOT" << std::endl;
-            std::cout << "good_matchesLeft: " << good_matchesLeft.size() << std::endl;
-            return true;
-          }
-          else{
-            matcher.match(descriptorsFront, descriptors2, matchesFront);
-            for( int i = 0; i < descriptorsFront.rows; i++ )
-            { 
-              double dist = matchesFront[i].distance;
-              if( dist < min_dist ) min_dist = dist;
-              if( dist > max_dist ) max_dist = dist;
-            }
-            printf("-- Max dist : %f \n", max_dist );
-            printf("-- Min dist : %f \n", min_dist );
-            for( int i = 0; i < descriptorsFront.rows; i++ )
-            { if( matchesFront[i].distance < 3*min_dist && matchesFront[i].distance < 0.125 )
-              { good_matchesFront.push_back( matchesFront[i]); }
-            }
-            if(good_matchesFront.size()>2){
-              std::cout << "ES UN FUCKING ROBOT" << std::endl;
-              std::cout << "good_matchesFront: " << good_matchesFront.size() << std::endl;
-              return true;
-            }
-            else{
-              std::cout << "NO ES UN FUCKING ROBOT" << std::endl;
-              return false;
-            }
-          }
-        }
-        
-      }
+      else if(buscaCoincidencias(descriptorsRight, descriptors2))
+        return true;
+      else if(buscaCoincidencias(descriptorsLeft, descriptors2))
+        return true;
+      else if(buscaCoincidencias(descriptorsFront, descriptors2))
+        return true;
+      else
+        return false;
     }
     else{
       std::cout << "BLABLABLABLABLABLABLABLABLABLA" << std::endl;
