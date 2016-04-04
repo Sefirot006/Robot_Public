@@ -128,8 +128,8 @@ public:
     //ultimoGiro = ' ';
     
     frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
-    //rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
-    //rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
+    rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
+    rearRGB2Sub = nh.subscribe("/robot2/trasera2/trasera2/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalDer, this);
 
     //set up the publisher for the cmd_vel topic
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
@@ -684,8 +684,8 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
    cv::namedWindow("view");
    cv::startWindowThread();
    try {    
-      cv_ptr_frontal = cv_bridge::toCvShare(msg);
-      //cv_ptr_frontal = cv_bridge::toCvCopy(msg, msg->encoding);
+      //cv_ptr_frontal = cv_bridge::toCvShare(msg);
+      cv_ptr_frontal = cv_bridge::toCvCopy(msg, msg->encoding);
 
       // imshow expects a float value to lie in [0,1], so we need to normalize
       // for visualization purposes.
