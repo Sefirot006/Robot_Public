@@ -4,7 +4,6 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
 #include <gazebo_msgs/ModelStates.h>
-#include <sensor_msgs/Imu.h>
 
 #include <image_transport/image_transport.h>
 //#include <opencv2/highgui/highgui.hpp>
@@ -17,10 +16,11 @@
 #include "opencv2/calib3d/calib3d.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 
-static const std::string OPENCV_WINDOW = "Image window";
+//static const std::string OPENCV_WINDOW = "Image window";
 
 const bool debug = true;
 
+cv::Mat normalizaImagen(const cv::Mat& m);
 void mostrarImagenEnVentana(cv::Mat image);
 void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg);
 void verCamaraIzquierda(const sensor_msgs::ImageConstPtr& msg);
@@ -215,62 +215,71 @@ public:
       procesaDatosBifocal();
   }
 
-  //void procesaDatosBifocal(const sensor_msgs::ImageConstPtr& msg){
+    
+  // cv_bridge::CvImagePtr cv_ptr_izq;
+  // cv_bridge::CvImagePtr cv_ptr_der;
+
+  // // 1.- Obtener 2 imágenes
+  // // 2.- Calcular KeyPoints (2 imágenes)
+  // // 3.- Calcular Descriptores (2A Key Points)
+  // // 4.- Calcular Correspondencias (Filtrar)
+  // // 5.- Obtener Homografía
+  // // 6.- Aplicar transformación + Unir
+
+  // // 1.- Obtener 2 imágenes
+  // // 2.- Calcular KeyPoints (2 imágenes)
+  // SurfFeatureDetector detector(400);
+  // vector<KeyPoint> keypoints1;
+  // detector.detect(img1, keypoints1);
+  // // 3.- Calcular Descriptores (2A Key Points)
+  // SurfDescriptorExtractor extractor;
+  // Mat descriptors1;
+  // extractor.compute(img1, keypoints1, descriptors1);
+  // // 4.- Calcular Correspondencias (Filtrar)
+  // BFMatcher matcher(NORM_L2);
+  // vector<DMatch> matches;
+  // matcher.match(descriptors1, descriptors2, matches);
+  // // 5.- Obtener Homografía
+  // // 6.- Aplicar transformación + Unir
+  // void FeatureDetector::detect(const Mat& image, vector<KeyPoint>& keypoints, const Mat& mask=Mat() ) const;
+  
+  //A partir de aqui
+  //Se fusionan las imagenes de cv_ptr_izq y cv_ptr_der.
+  //http://stackoverflow.com/questions/11134667/some-problems-on-image-stitching-homography?lq=1
+  //http://docs.opencv.org/2.4/doc/tutorials/introduction/linux_gcc_cmake/linux_gcc_cmake.html#linux-gcc-usage
+  //FindContours
+  //http://docs.opencv.org/3.1.0/d3/dc0/group__imgproc__shape.html#ga17ed9f5d79ae97bd4c7cf18403e1689a&gsc.tab=0
   void procesaDatosBifocal(){
-
-/*    cv_bridge::CvImagePtr cv_ptr_izq;
-    cv_bridge::CvImagePtr cv_ptr_der;
-
-    // 1.- Obtener 2 imágenes
-    // 2.- Calcular KeyPoints (2 imágenes)
-    // 3.- Calcular Descriptores (2A Key Points)
-    // 4.- Calcular Correspondencias (Filtrar)
-    // 5.- Obtener Homografía
-    // 6.- Aplicar transformación + Unir
-
-    // 1.- Obtener 2 imágenes
-    // 2.- Calcular KeyPoints (2 imágenes)
-    SurfFeatureDetector detector(400);
-    vector<KeyPoint> keypoints1;
-    detector.detect(img1, keypoints1);
-    // 3.- Calcular Descriptores (2A Key Points)
-    SurfDescriptorExtractor extractor;
-    Mat descriptors1;
-    extractor.compute(img1, keypoints1, descriptors1);
-    // 4.- Calcular Correspondencias (Filtrar)
-    BFMatcher matcher(NORM_L2);
-    vector<DMatch> matches;
-    matcher.match(descriptors1, descriptors2, matches);
-    // 5.- Obtener Homografía
-    // 6.- Aplicar transformación + Unir
-    void FeatureDetector::detect(const Mat& image, vector<KeyPoint>& keypoints, const Mat& mask=Mat() ) const;
-*/ 
-
-    std::cout << "Iniciando Panoramica!!" << std::endl;
     //http://docs.opencv.org/2.4/doc/tutorials/features2d/feature_homography/feature_homography.html
-
+    std::cout << "Iniciando Panoramica!!" << std::endl;
 
     // 1.- Obtener 2 imágenes
-    //cv::Mat image1 = cv_ptr_der->image;
-    //cv::Mat image2 = cv_ptr_der->image;
+    cv::Mat image1 = normalizaImagen(cv_ptr_der->image);
+    cv::Mat image2 = normalizaImagen(cv_ptr_izq->image);
+    cv::namedWindow("Prueba");
+    cv::startWindowThread();
+    cv::imshow( "Prueba", image2 );
+    cv::namedWindow("Prueba1");
+    cv::startWindowThread();
+    cv::imshow( "Prueba1", image1 );
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
-    int minHessian = 900;
+    int minHessian = 2000;
 
     cv::SurfFeatureDetector detector( minHessian );
     std::vector< cv::KeyPoint > keypoints_object, keypoints_scene;
 
-    detector.detect( cv_ptr_izq->image, keypoints_object );
-    detector.detect( cv_ptr_der->image, keypoints_scene );
+    detector.detect( image1, keypoints_object );
+    detector.detect( image2, keypoints_scene );
 
     // 3.- Calcular Descriptores (2A Key Points)
     //-- Step 2: Calculate descriptors (feature vectors)
     cv::SurfDescriptorExtractor extractor;
 
     cv::Mat descriptors_object, descriptors_scene;
-    extractor.compute( cv_ptr_izq->image, keypoints_object, descriptors_object );
-    extractor.compute( cv_ptr_der->image, keypoints_scene, descriptors_scene );
+    extractor.compute( image1, keypoints_object, descriptors_object );
+    extractor.compute( image2, keypoints_scene, descriptors_scene );
 
     // 4.- Calcular Correspondencias (Filtrar)
     //-- Step 3: Matching descriptor vectors using FLANN matcher
@@ -311,9 +320,9 @@ public:
       // 6.- Aplicar transformación + Unir
       // Use the Homography Matrix to warp the images
       cv::Mat result;
-      cv::warpPerspective(cv_ptr_izq->image,result,H,cv::Size(cv_ptr_izq->image.cols+cv_ptr_der->image.cols,cv_ptr_izq->image.rows));
-      cv::Mat half(result,cv::Rect(0,0,cv_ptr_der->image.cols,cv_ptr_der->image.rows));
-      cv_ptr_der->image.copyTo(half);
+      cv::warpPerspective(image1,result,H,cv::Size(image1.cols+image2.cols,image1.rows),cv::INTER_CUBIC);
+      cv::Mat half(result,cv::Rect(0,0,image2.cols,image2.rows));
+      image2.copyTo(half);
       // 7.- Ver resultado
       cv::namedWindow("Resultado panoramica");
       cv::startWindowThread();
@@ -323,12 +332,6 @@ public:
     } catch (cv::Exception e) {
       std::cerr << "Se ha detectado una exception al realizar la Homografía: " + e.err << std::endl;
     }
-
-    //A partir de aqui
-    //Se fusionan las imagenes de cv_ptr_izq y cv_ptr_der.
-    //http://stackoverflow.com/questions/11134667/some-problems-on-image-stitching-homography?lq=1
-    //FindContours
-    //http://docs.opencv.org/3.1.0/d3/dc0/group__imgproc__shape.html#ga17ed9f5d79ae97bd4c7cf18403e1689a&gsc.tab=0
   }
 
    void procesaDatosBifocalIzq(const sensor_msgs::ImageConstPtr& msg){
@@ -594,7 +597,7 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
    try {
       cv_bridge::CvImageConstPtr cv_ptr;
       cv_ptr = cv_bridge::toCvShare(msg);
-      //cv_bridge::toCvCopy(msg, msg->encoding);
+      //cv_ptr = cv_bridge::toCvCopy(msg, msg->encoding);
 
       // imshow expects a float value to lie in [0,1], so we need to normalize
       // for visualization purposes.
@@ -609,39 +612,23 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
       ROS_ERROR("cv_bridge exception: %s", e.what());
    }
 }
-
 /*
-void mostrarImagenEnVentana(cv::Mat image) {
-  cv::namedWindow(OPENCV_WINDOW);
-  cv::startWindowThread();
-   try {
-    cv::imshow(OPENCV_WINDOW, image);
-    cv::waitKey(2000);
-    cv::destroyWindow(OPENCV_WINDOW);
-  } catch (const cv::Exception& e) {
-    ROS_ERROR("cv_bridge exception: %s", e.what());
-  }
+cv::Mat normalizaImagen(const cv::Mat& m){
+  cv::Mat mat(m);
+  double max = 0.0;
+  cv::minMaxLoc(mat, 0, &max, 0, 0);
+  cv::Mat normalized;
+  mat.convertTo(normalized, CV_32F, 1.0/max, 0);
+  normalized.convertTo(normalized, CV_8UC1);
+  return normalized;
 }
 */
-/*
-void mostrarImagenEnVentana(cv::Mat image) {
-  cv_bridge::CvImage out_msg;
-  out_msg.header   = in_msg->header; // Same timestamp and tf frame as input image
-  out_msg.encoding = sensor_msgs::image_encodings::TYPE_32FC1; // Or whatever
-  out_msg.image    = image; // Your cv::Mat
-  cout<<"EOOOOOOOOOOO"<<endl;
-  cv::namedWindow(OPENCV_WINDOW);
-  cv::startWindowThread();
-   try {
 
-    cv::imshow(OPENCV_WINDOW, cv_bridge::toCvShare(out_msg, "bgr8")->image););
-    cv::waitKey(2000);
-    cv::destroyWindow(OPENCV_WINDOW);
-  } catch (const cv::Exception& e) {
-    ROS_ERROR("cv_bridge exception: %s", e.what());
-  }
+cv::Mat normalizaImagen(const cv::Mat& m){
+  cv::Mat mat;
+  cv::normalize(m, mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+  return mat;
 }
-*/
 
 int main(int argc, char** argv){   //init the ROS node
    ros::init(argc, argv, "robot_driver");
