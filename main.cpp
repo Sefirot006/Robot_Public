@@ -359,7 +359,7 @@ void procesaDatosBifocal(){
   int numMatches = 0;
 
   for( int i = 0; i < descriptors_object.rows; i++ ) { 
-    if( matchesBack[i].distance < 2.5*min_dist ) {
+    if( matchesBack[i].distance < 2.75*min_dist ) {
         good_matchesBack.push_back( matchesBack[i]);
         numMatches++;
     }
@@ -367,7 +367,16 @@ void procesaDatosBifocal(){
 
   if (numMatches < 24) {
     for( int i = 0; i < descriptors_object.rows; i++ ) { 
-      if( matchesBack[i].distance < 0.45*max_dist ) {
+      if( matchesBack[i].distance < 0.2*max_dist ) {
+          good_matchesBack.push_back( matchesBack[i]);
+          numMatches++;
+      }
+    }
+  }
+
+  if (numMatches < 24) {
+    for( int i = 0; i < descriptors_object.rows; i++ ) { 
+      if( matchesBack[i].distance < 0.4*max_dist ) {
           good_matchesBack.push_back( matchesBack[i]);
           numMatches++;
       }
