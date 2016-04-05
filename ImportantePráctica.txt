@@ -1,3 +1,21 @@
+FEATURE DETECTORS
+MserFeatureDetector
+StarFeatureDetector
+DenseFeatureDetector
+FastFeatureDetector
+SurfFeatureDetector
+OrbFeatureDetector
+
+DESCRIPTOR EXTRACTORS
+SurfDescriptorExtractor
+BriefDescriptorExtractor
+OrbDescriptorExtractor
+
+MATCHERS
+FlannBasedMatcher
+BFMatcher
+
+
 Solo se puede usar: Laser y camara delantera
 Se puede fusionar imágenes de cámara trasera (algo de panorámica)
 No se puede usar nubes de puntos
