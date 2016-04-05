@@ -29,7 +29,7 @@ using namespace cv;
 
 static const std::string OPENCV_WINDOW = "Image window";
 
-const bool debug = false;
+const bool debug = true;
 const bool panoramica = true;
 
 class RobotDriver
@@ -277,7 +277,7 @@ public:
     //-- Step 1: Detect the keypoints using SURF Detector
     int minHessian = 400;
 
-    cv::OrbFeatureDetector detector;
+    cv::SiftFeatureDetector detector;
     std::vector< cv::KeyPoint > keypoints_object, keypoints_scene;
 
     detector.detect( image1, keypoints_object );
@@ -285,7 +285,7 @@ public:
 
     // 3.- Calcular Descriptores (2A Key Points)
     //-- Step 2: Calculate descriptors (feature vectors)
-    cv::BriefDescriptorExtractor extractor;
+    cv::SurfDescriptorExtractor extractor;
 
     cv::Mat descriptors_object, descriptors_scene;
     extractor.compute( image1, keypoints_object, descriptors_object );
@@ -327,7 +327,7 @@ public:
 
     if (numMatches < 24) {
       for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 0.25*max_dist ) {
+        if( matchesBack[i].distance < 3.5*min_dist ) {
             good_matchesBack.push_back( matchesBack[i]);
             numMatches++;
         }
@@ -336,9 +336,12 @@ public:
 
     if (numMatches < 24) {
       for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 0.4*max_dist ) {
+        if( matchesBack[i].distance < 0.3*max_dist ) {
             good_matchesBack.push_back( matchesBack[i]);
             numMatches++;
+        }
+        if (numMatches > 30) {
+            break;
         }
       }
     }
