@@ -30,6 +30,7 @@ using namespace cv;
 static const std::string OPENCV_WINDOW = "Image window";
 
 const bool debug = false;
+const bool panoramica = true;
 
 class RobotDriver
 {
@@ -51,7 +52,7 @@ private:
   // Posicion robot en int para usarla con la matriz interna del mapa
   struct posicion{
     int x, y;
-  }posRobot;
+  } posRobot;
 
   bool camIncorrecto;
   bool esquinaIzquierda;
@@ -102,7 +103,7 @@ public:
     esquinaIzquierda = false;
     camIncorrecto = false;
     turbo = false;
-    inicio = false;
+    inicio = true;
 
     // Inicializacion del mapa
     for(unsigned i=0;i<20;++i){
@@ -257,53 +258,20 @@ public:
   }
 
   void verPanoramica() {
-    if (cv_ptr_izq!=0 && cv_ptr_der!=0)
-      procesaDatosBifocal();
+    if (panoramica) {
+      if (cv_ptr_izq!=0 && cv_ptr_der!=0)
+        procesaDatosBifocal();
+    }
   }
 
-    
-  // cv_bridge::CvImagePtr cv_ptr_izq;
-  // cv_bridge::CvImagePtr cv_ptr_der;
-
-  // // 1.- Obtener 2 imágenes
-  // // 2.- Calcular KeyPoints (2 imágenes)
-  // // 3.- Calcular Descriptores (2A Key Points)
-  // // 4.- Calcular Correspondencias (Filtrar)
-  // // 5.- Obtener Homografía
-  // // 6.- Aplicar transformación + Unir
-
-  // // 1.- Obtener 2 imágenes
-  // // 2.- Calcular KeyPoints (2 imágenes)
-  // SurfFeatureDetector detector(400);
-  // vector<KeyPoint> keypoints1;
-  // detector.detect(img1, keypoints1);
-  // // 3.- Calcular Descriptores (2A Key Points)
-  // SurfDescriptorExtractor extractor;
-  // Mat descriptors1;
-  // extractor.compute(img1, keypoints1, descriptors1);
-  // // 4.- Calcular Correspondencias (Filtrar)
-  // BFMatcher matcher(NORM_L2);
-  // vector<DMatch> matches;
-  // matcher.match(descriptors1, descriptors2, matches);
-  // // 5.- Obtener Homografía
-  // // 6.- Aplicar transformación + Unir
-  // void FeatureDetector::detect(const Mat& image, vector<KeyPoint>& keypoints, const Mat& mask=Mat() ) const;
-  
-  //A partir de aqui
-  //Se fusionan las imagenes de cv_ptr_izq y cv_ptr_der.
-  //http://stackoverflow.com/questions/11134667/some-problems-on-image-stitching-homography?lq=1
-  //http://docs.opencv.org/2.4/doc/tutorials/introduction/linux_gcc_cmake/linux_gcc_cmake.html#linux-gcc-usage
-  //FindContours
-  //http://docs.opencv.org/3.1.0/d3/dc0/group__imgproc__shape.html#ga17ed9f5d79ae97bd4c7cf18403e1689a&gsc.tab=0
   void procesaDatosBifocal(){
-    //http://docs.opencv.org/2.4/doc/tutorials/features2d/feature_homography/feature_homography.html
     std::cout << "Iniciando Panoramica!!" << std::endl;
 
     // 1.- Obtener 2 imágenes
     // cv::Mat image1 = normalizaImagen(cv_ptr_der->image);
     // cv::Mat image2 = normalizaImagen(cv_ptr_izq->image);
-    cv::Mat image1 = cv_ptr_der->image;
-    cv::Mat image2 = cv_ptr_izq->image;
+    cv::Mat image2 = cv_ptr_der->image;
+    cv::Mat image1 = cv_ptr_izq->image;
     // cv::namedWindow("Prueba");
     // cv::startWindowThread();
     // cv::imshow( "Prueba", image2 );
@@ -313,21 +281,21 @@ public:
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
-    int minHessian = 80;
+    int minHessian = 400;
 
-    cv::SurfFeatureDetector detector( minHessian );
+    cv::OrbFeatureDetector detector;
     std::vector< cv::KeyPoint > keypoints_object, keypoints_scene;
 
     detector.detect( image1, keypoints_object );
-    detector.detect( image2, keypoints_scene );
+    detector.detect( image2, keypoints_scene  );
 
     // 3.- Calcular Descriptores (2A Key Points)
     //-- Step 2: Calculate descriptors (feature vectors)
-    cv::SurfDescriptorExtractor extractor;
+    cv::BriefDescriptorExtractor extractor;
 
     cv::Mat descriptors_object, descriptors_scene;
     extractor.compute( image1, keypoints_object, descriptors_object );
-    extractor.compute( image2, keypoints_scene, descriptors_scene );
+    extractor.compute( image2, keypoints_scene,  descriptors_scene  );
 
     // 4.- Calcular Correspondencias (Filtrar)
     //-- Step 3: Matching descriptor vectors using FLANN matcher
@@ -354,22 +322,45 @@ public:
     //-- Use only "good" matchesBack (i.e. whose distance is less than 3*min_dist )
     std::vector< cv::DMatch > good_matchesBack;
 
+    int numMatches = 0;
+
     for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 3*min_dist )
+      if( matchesBack[i].distance < 2.5*min_dist ) {
+          good_matchesBack.push_back( matchesBack[i]);
+          numMatches++;
+      }
+    }
+
+    if (numMatches < 24) {
+      for( int i = 0; i < descriptors_object.rows; i++ ) { 
+        if( matchesBack[i].distance < 3*min_dist ) {
             good_matchesBack.push_back( matchesBack[i]);
+            numMatches++;
+        }
+      }
+    }
+
+    if (numMatches < 24) {
+      for( int i = 0; i < descriptors_object.rows; i++ ) { 
+        if (numMatches > 40)
+          break;
+        if( matchesBack[i].distance < 4*min_dist) {
+            good_matchesBack.push_back( matchesBack[i]);
+            numMatches++;
+        }
+      }
     }
 
     Mat img_matches;
     cv::drawMatches( image1, keypoints_object, image2, keypoints_scene,
-        good_matchesBack, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
-        std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+    good_matchesBack, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
+    std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
 
     cv::namedWindow("Resultado good_matches");
-      cv::startWindowThread();
-      cv::imshow( "Resultado good_matches", img_matches );
+    cv::startWindowThread();
+    cv::imshow( "Resultado good_matches", img_matches );
 
-    std::vector< cv::Point2f > obj;
-    std::vector< cv::Point2f > scene;
+    std::vector< cv::Point2f > obj, scene;
     for( int i = 0; i < good_matchesBack.size(); i++ ){
         //-- Get the keypoints from the good matchesBack
         obj.push_back( keypoints_object[ good_matchesBack[i].queryIdx ].pt );
@@ -391,36 +382,36 @@ public:
       cv::startWindowThread();
       cv::imshow( "Resultado panoramica", result );
 
-      cv::waitKey(30);
+      cv::waitKey(100);
     } catch (cv::Exception e) {
       std::cerr << "Se ha detectado una exception al realizar la Homografía: " + e.err << std::endl;
       return ;
     }
   }
 
-   void procesaDatosBifocalIzq(const sensor_msgs::ImageConstPtr& msg){
-      try {
-        if (debug)
-          verCamaraIzquierda(msg);
-        cv_ptr_izq = cv_bridge::toCvCopy(msg, msg->encoding);
-      }
-      catch (cv_bridge::Exception& e){
-         ROS_ERROR("cv_bridge exception: %s", e.what());
-         return;
-      }
-   }
+  void procesaDatosBifocalIzq(const sensor_msgs::ImageConstPtr& msg){
+    try {
+      if (debug)
+        verCamaraIzquierda(msg);
+      cv_ptr_izq = cv_bridge::toCvCopy(msg, msg->encoding);
+    }
+    catch (cv_bridge::Exception& e){
+       ROS_ERROR("cv_bridge exception: %s", e.what());
+       return;
+    }
+  }
 
-   void procesaDatosBifocalDer(const sensor_msgs::ImageConstPtr& msg){
-      try {
-        if (debug)
-          verCamaraDerecha(msg);
-        cv_ptr_der = cv_bridge::toCvCopy(msg, msg->encoding);
-      }
-      catch (cv_bridge::Exception& e){
-         ROS_ERROR("cv_bridge exception: %s", e.what());
-         return;
-      }
-   }
+  void procesaDatosBifocalDer(const sensor_msgs::ImageConstPtr& msg){
+    try {
+      if (panoramica)
+        verCamaraDerecha(msg);
+      cv_ptr_der = cv_bridge::toCvCopy(msg, msg->encoding);
+    }
+    catch (cv_bridge::Exception& e){
+       ROS_ERROR("cv_bridge exception: %s", e.what());
+       return;
+    }
+  }
 
   void giroEsquinaIzquierda(){
     //std::cout << "GIRANDO POR LA FUNCION ESQUINA IZQUIERDA!!" << std::endl;
@@ -470,6 +461,7 @@ public:
     }
     std::cout << "ESTAS BUSCANDO ESTOOOO!!!" << std::endl;
     std::cout << "good_matches: " << good_matches.size() << std::endl;
+    
     if(good_matches.size()>4){
       std::cout << "good_matches: " << good_matches.size() << std::endl;
       return true;
@@ -534,6 +526,7 @@ public:
     // Me esta dando 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
 
+
     valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
     contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
     
@@ -574,6 +567,7 @@ public:
           contI++;
         }
       }
+
       // 4
       if(i>=636 && i<639){
         if(!std::isnan(msg->ranges[i])){
@@ -731,7 +725,6 @@ public:
         std::cout << "Esperando señal de salida" << std::endl;
       }
     }
-
     if (debug) {
        ros::spin();
        ros::shutdown();
@@ -739,63 +732,63 @@ public:
     }
   }
 
-void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
-   cv::namedWindow("view");
-   cv::startWindowThread();
-   try { 
-      cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image);
-      cv::waitKey(30);
-   }
-   catch (cv_bridge::Exception& e) {
-      ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
-   }
-}
+  void verCamaraFrontal(const sensor_msgs::ImageConstPtr& msg){
+     cv::namedWindow("view");
+     cv::startWindowThread();
+     try { 
+        cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image);
+        cv::waitKey(30);
+     }
+     catch (cv_bridge::Exception& e) {
+        ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
+     }
+  }
 
-void verCamaraDerecha(const sensor_msgs::ImageConstPtr& msg){
-   cv::namedWindow("derecha");
-   cv::startWindowThread();
-   try { 
-      cv::imshow("derecha", cv_bridge::toCvShare(msg, "bgr8")->image);
-      cv::waitKey(30);
-   }
-   catch (cv_bridge::Exception& e) {
-      ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
-   }
-}
+  void verCamaraDerecha(const sensor_msgs::ImageConstPtr& msg){
+     cv::namedWindow("derecha");
+     cv::startWindowThread();
+     try { 
+        cv::imshow("derecha", cv_bridge::toCvShare(msg, "bgr8")->image);
+        cv::waitKey(30);
+     }
+     catch (cv_bridge::Exception& e) {
+        ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
+     }
+  }
 
-void verCamaraIzquierda(const sensor_msgs::ImageConstPtr& msg){
-   cv::namedWindow("izquierda");
-   cv::startWindowThread();
-   try { 
-      cv::imshow("izquierda", cv_bridge::toCvShare(msg, "bgr8")->image);
-      cv::waitKey(30);
-   }
-   catch (cv_bridge::Exception& e) {
-      ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
-   }
-}
+  void verCamaraIzquierda(const sensor_msgs::ImageConstPtr& msg){
+     cv::namedWindow("izquierda");
+     cv::startWindowThread();
+     try { 
+        cv::imshow("izquierda", cv_bridge::toCvShare(msg, "bgr8")->image);
+        cv::waitKey(30);
+     }
+     catch (cv_bridge::Exception& e) {
+        ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
+     }
+  }
 
-void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
-  std::cout << "HAGO PRIMERO verCamaraFrontalNormalizada" << std::endl;
-   cv::namedWindow("view");
-   cv::startWindowThread();
-   try {    
-      //cv_ptr_frontal = cv_bridge::toCvShare(msg);
-      cv_ptr_frontal = cv_bridge::toCvCopy(msg, msg->encoding);
+  void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
+    std::cout << "HAGO PRIMERO verCamaraFrontalNormalizada" << std::endl;
+     cv::namedWindow("view");
+     cv::startWindowThread();
+     try {    
+        //cv_ptr_frontal = cv_bridge::toCvShare(msg);
+        cv_ptr_frontal = cv_bridge::toCvCopy(msg, msg->encoding);
 
-      // imshow expects a float value to lie in [0,1], so we need to normalize
-      // for visualization purposes.
-      double max = 0.0;
-      cv::minMaxLoc(cv_ptr_frontal->image, 0, &max, 0, 0);
-      cv::Mat normalized;
-      cv_ptr_frontal->image.convertTo(normalized, CV_32F, 1.0/max, 0);
+        // imshow expects a float value to lie in [0,1], so we need to normalize
+        // for visualization purposes.
+        double max = 0.0;
+        cv::minMaxLoc(cv_ptr_frontal->image, 0, &max, 0, 0);
+        cv::Mat normalized;
+        cv_ptr_frontal->image.convertTo(normalized, CV_32F, 1.0/max, 0);
 
-      //cv::imshow("view", normalized);
-      cv::waitKey(1);
-   } catch (const cv_bridge::Exception& e) {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-   }
-}
+        //cv::imshow("view", normalized);
+        cv::waitKey(1);
+     } catch (const cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+     }
+  }
 
 };
 /*
