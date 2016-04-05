@@ -395,7 +395,7 @@ public:
 
   void procesaDatosBifocalDer(const sensor_msgs::ImageConstPtr& msg){
     try {
-      if (panoramica)
+      if (debug)
         verCamaraDerecha(msg);
       cv_ptr_der = cv_bridge::toCvCopy(msg, msg->encoding);
     }
