@@ -327,7 +327,7 @@ public:
 
     if (numMatches < 24) {
       for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 0.2*max_dist ) {
+        if( matchesBack[i].distance < 0.25*max_dist ) {
             good_matchesBack.push_back( matchesBack[i]);
             numMatches++;
         }
