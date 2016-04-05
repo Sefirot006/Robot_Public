@@ -319,30 +319,9 @@ public:
     int numMatches = 0;
 
     for( int i = 0; i < descriptors_object.rows; i++ ) { 
-      if( matchesBack[i].distance < 2.75*min_dist ) {
+      if( matchesBack[i].distance < 3*min_dist ) {
           good_matchesBack.push_back( matchesBack[i]);
           numMatches++;
-      }
-    }
-
-    if (numMatches < 24) {
-      for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 3.5*min_dist ) {
-            good_matchesBack.push_back( matchesBack[i]);
-            numMatches++;
-        }
-      }
-    }
-
-    if (numMatches < 24) {
-      for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 0.3*max_dist ) {
-            good_matchesBack.push_back( matchesBack[i]);
-            numMatches++;
-        }
-        if (numMatches > 30) {
-            break;
-        }
       }
     }
 
