@@ -37,8 +37,8 @@ private:
   double rotateVel;
   double valueIzN, valueDeN;
   double valueIzExtAnt, valueDeExtAnt;
-  double valueI, valueF, valueD, valueIzExt, valueDeExt;
-  int contI, contF, contD, contIE, contDE;
+  double valueI, valueF, valueD, valueIzExt, valueDeExt, valueFExt;
+  int contI, contF, contD, contIE, contDE, contFExt;
 
   long double tiempoTurboActivado;
   long double tiempoTurboDesactivado;
@@ -53,8 +53,9 @@ private:
   }posRobot;
 
   bool camIncorrecto;
-  bool esquinaIzquierda, esquinaDerecha;
+  bool esquinaIzquierda;
   bool turbo;
+  bool inicio;
 
   // El mapa mide 20x20
   int mapaCarrera[20][20];
@@ -75,6 +76,8 @@ private:
   ros::Subscriber rearRGB1Sub;
   ros::Subscriber rearRGB2Sub;
 
+  ros::Subscriber inicioCarrera;
+
   cv_bridge::CvImagePtr cv_ptr_frontal;
   cv_bridge::CvImagePtr cv_ptr_izq;
   cv_bridge::CvImagePtr cv_ptr_der;
@@ -90,16 +93,16 @@ public:
 
     valueIzN = 1.8; valueDeN = 4.2;
     valueIzExtAnt = 10; valueDeExtAnt = 10;
-    valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
-    contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
+    valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1, valueFExt = 0.1;
+    contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1, contFExt = 1;
 
     tiempoTurboActivado = 5;
     tiempoTurboDesactivado = 10;
     
     esquinaIzquierda = false;
-    esquinaDerecha = false;
     camIncorrecto = false;
     turbo = false;
+    inicio = true;
 
     // Inicializacion del mapa
     for(unsigned i=0;i<20;++i){
@@ -144,14 +147,24 @@ public:
     // Para usar el imu descomentar
     // imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
 
+    // Para el inicio de la carrera
+    //inicioCarrera = nh.subscribe("/control_tower/race_state", 1, &RobotDriver::iniciaCarrera, this);
+
     // ModelStatesMessage
     ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
     // Para la navegacion
-    laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
     // Para sacar el tamaño del robot en el laser
     //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::compruebaRobot, this);
   }
   
+  /**
+  void iniciaCarrera(const std_msgs::String::ConstPtr& msg){
+    if(msg->data=="GO")
+      inicio = true;
+  }
+  */
+
   // El robot 2 esta en la i = 53
   void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
     unsigned suma = 0;
@@ -345,6 +358,16 @@ public:
         if( matchesBack[i].distance < 3*min_dist )
             good_matchesBack.push_back( matchesBack[i]);
     }
+
+    Mat img_matches;
+    cv::drawMatches( image1, keypoints_object, image2, keypoints_scene,
+        good_matchesBack, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
+        std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+
+    cv::namedWindow("Resultado good_matches");
+      cv::startWindowThread();
+      cv::imshow( "Resultado good_matches", img_matches );
+
     std::vector< cv::Point2f > obj;
     std::vector< cv::Point2f > scene;
     for( int i = 0; i < good_matchesBack.size(); i++ ){
@@ -360,7 +383,7 @@ public:
       // 6.- Aplicar transformación + Unir
       // Use the Homography Matrix to warp the images
       cv::Mat result;
-      cv::warpPerspective(image1,result,H,cv::Size(image1.cols+image2.cols,image1.rows),cv::INTER_CUBIC);
+      cv::warpPerspective(image1,result,H,cv::Size(image1.cols+image2.cols,image1.rows));
       cv::Mat half(result,cv::Rect(0,0,image2.cols,image2.rows));
       image2.copyTo(half);
       // 7.- Ver resultado
@@ -445,7 +468,8 @@ public:
     { if( matches[i].distance < 3*min_dist && matches[i].distance < 0.125 )
       { good_matches.push_back( matches[i]); }
     }
-
+    std::cout << "ESTAS BUSCANDO ESTOOOO!!!" << std::endl;
+    std::cout << "good_matches: " << good_matches.size() << std::endl;
     if(good_matches.size()>4){
       //std::cout << "ES UN FUCKING ROBOT" << std::endl;
       std::cout << "good_matches: " << good_matches.size() << std::endl;
@@ -536,6 +560,14 @@ public:
           contF++;
         }
       }
+      // 50
+      if(i>=354 && i<404){
+        if(!std::isnan(msg->ranges[i])){
+          valueFExt += msg->ranges[i];
+          contFExt++;
+        }
+      }
+
       // 210
       if(i>=429 && i<639){
         if(!std::isnan(msg->ranges[i])){
@@ -561,6 +593,8 @@ public:
     valueI /= contI;
     ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
     valueIzExt /= contIE;
+    valueFExt /= contFExt;
+    std::cout << "valueFExtremo: " << valueFExt << std::endl;
     //std::cout << "valueIzExtAnt: " << valueIzExtAnt << std::endl;
     //ROS_INFO_STREAM("valueIzExt:" << valueIzExt << "; " << contIE); // Acceso a los valores de rango
     //std::cout << "valueDeExtAnt: " << valueDeExtAnt << std::endl;
@@ -576,15 +610,17 @@ public:
     }else{
       if(valueIzExt > valueIzExtAnt+0.5){
         esquinaIzquierda = true;
-        //std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
+        std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
         // Sacar la orientacion y no parar hasta que haya girado 90º??
       }
      
-      if(!esquinaIzquierda && !esquinaDerecha){
+      if(!esquinaIzquierda){
         if(valueF==0.1)
           forwardVel = -0.5;
+        else if(valueFExt==0.1)
+          forwardVel = -0.3;
         else if((valueI < valueIzN+0.3 && valueI > valueIzN-0.3) && valueF > 1.1){
-          //std::cout << "SIGO RECTO" << std::endl;
+          std::cout << "SIGO RECTO" << std::endl;
 
           if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
             forwardVel = 0.9;
@@ -603,7 +639,7 @@ public:
           rotateVel = 0;
         }
         else if(valueI > valueIzN+0.3 && valueF > 1.1){
-          //std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
+          std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
           if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
             forwardVel = 0.9;
           else if(turbo && tiempoTurboActivado>0)
@@ -621,7 +657,7 @@ public:
           rotateVel = 0.3;
         }
         else if(valueI < valueIzN-0.3 && valueF > 1.1){
-          //std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
+          std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
           if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
             forwardVel = 0.9;
           else if(turbo && tiempoTurboActivado>0)
@@ -643,9 +679,11 @@ public:
         
         else if(valueF < 1.1){
           if(cv_ptr_frontal != 0){
-            if(encuentraRobot() && tiempoTurboDesactivado > 5){
-              turbo = true;
-              std::cout << "ESTOY VIENDO A UN ROBOT DELANTE A MENOS DE 1 METRO!!" << std::endl;
+            if(tiempoTurboDesactivado > 5){
+              if(encuentraRobot()){
+                turbo = true;
+                std::cout << "ESTOY VIENDO A UN ROBOT DELANTE A MENOS DE 1 METRO!!" << std::endl;
+              }
             }
             else{
               turbo = false;
@@ -654,12 +692,12 @@ public:
           }
           forwardVel = 0.1;
           if(valueI < valueD){
-            //std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
+            std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
             rotateVel = -0.4;
           }
           else{
             rotateVel = 0.4;
-            //std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+            std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
           }
         }
         else forwardVel = 0.5;
@@ -686,35 +724,37 @@ public:
     
     //std::cout << "Iniciando bucle para siempre" << std::endl;
     while (ros::ok()){
-      long double tiemp = getTickCount();
-      geometry_msgs::Twist base_cmd; // Este mensaje es el que se publicara para decir las velocidades linear y angular del robot
-      base_cmd.linear.x = forwardVel; // Velocidad linear que tendra el colega
-      base_cmd.angular.z = rotateVel; // Velocidad angular que tendra el colega
+      if(inicio){
+        long double tiemp = getTickCount();
+        geometry_msgs::Twist base_cmd; // Este mensaje es el que se publicara para decir las velocidades linear y angular del robot
+        base_cmd.linear.x = forwardVel; // Velocidad linear que tendra el colega
+        base_cmd.angular.z = rotateVel; // Velocidad angular que tendra el colega
 
-      //publish the assembled command
-      cmd_vel_pub_.publish(base_cmd);
+        //publish the assembled command
+        cmd_vel_pub_.publish(base_cmd);
 
-      ros::spinOnce(); // Se procesaran todas las llamadas que queden pendientes (como procesaDatosLaser)
-      rate.sleep(); // Con esto esperara a que acabe el ciclo
-      long double tFinal = (getTickCount()-tiemp)/getTickFrequency();
+        ros::spinOnce(); // Se procesaran todas las llamadas que queden pendientes (como procesaDatosLaser)
+        rate.sleep(); // Con esto esperara a que acabe el ciclo
+        long double tFinal = (getTickCount()-tiemp)/getTickFrequency();
 
-      if((tiempoTurboDesactivado>0 && tiempoTurboDesactivado<10) || turbo){
-        tiempoTurboActivado -= tFinal;
-        tiempoTurboDesactivado -= tFinal;
-      }else if(tiempoTurboDesactivado<0){
-        tiempoTurboDesactivado = 10;
-        tiempoTurboActivado = 5;
+        if((tiempoTurboDesactivado>0 && tiempoTurboDesactivado<10) || turbo){
+          tiempoTurboActivado -= tFinal;
+          tiempoTurboDesactivado -= tFinal;
+        }else if(tiempoTurboDesactivado<0){
+          tiempoTurboDesactivado = 10;
+          tiempoTurboActivado = 5;
+        }
+        std::cout << "tiempo turbo activado: " << tiempoTurboActivado << std::endl;
+        std::cout << "tiempo turbo desactivado: " << tiempoTurboDesactivado << std::endl;
+        std::cout << "Velocidad: " << forwardVel << std::endl;
+        std::cout << "turbo: " << turbo << std::endl;
+        std::cout << std::endl;
+
+
+        //std::cout << "TIEMPOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: " << tFinal << std::endl;
+        if (debug)
+          verPanoramica();
       }
-      std::cout << "tiempo turbo activado: " << tiempoTurboActivado << std::endl;
-      std::cout << "tiempo turbo desactivado: " << tiempoTurboDesactivado << std::endl;
-      std::cout << "Velocidad: " << forwardVel << std::endl;
-      std::cout << "turbo: " << turbo << std::endl;
-      std::cout << std::endl;
-
-
-      //std::cout << "TIEMPOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: " << tFinal << std::endl;
-      if (debug)
-        verPanoramica();
     }
 
     if (debug) {
@@ -775,22 +815,11 @@ void verCamaraFrontalNormalizada(const sensor_msgs::ImageConstPtr& msg){
       cv::Mat normalized;
       cv_ptr_frontal->image.convertTo(normalized, CV_32F, 1.0/max, 0);
 
-      cv::imshow("view", normalized);
+      //cv::imshow("view", normalized);
       cv::waitKey(1);
    } catch (const cv_bridge::Exception& e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
    }
-}
-
-long double
-tiempo(void){
- struct rusage usage;
- getrusage(RUSAGE_SELF,&usage);
- return( (long double) usage.ru_utime.tv_sec +
-     (long double) usage.ru_utime.tv_usec/1e6
-     /* + (long double) usage.ru_stime.tv_sec +
-         (long double) usage.ru_stime.tv_usec/1e6 */
-       );
 }
 
 };
