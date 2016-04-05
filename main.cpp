@@ -272,6 +272,12 @@ public:
     // cv::Mat image2 = normalizaImagen(cv_ptr_izq->image);
     cv::Mat image2 = cv_ptr_der->image;
     cv::Mat image1 = cv_ptr_izq->image;
+    // cv::namedWindow("Prueba");
+    // cv::startWindowThread();
+    // cv::imshow( "Prueba", image2 );
+    // cv::namedWindow("Prueba1");
+    // cv::startWindowThread();
+    // cv::imshow( "Prueba1", image1 );
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
@@ -319,7 +325,7 @@ public:
     int numMatches = 0;
 
     for( int i = 0; i < descriptors_object.rows; i++ ) { 
-      if( matchesBack[i].distance < 2.75*min_dist ) {
+      if( matchesBack[i].distance < 2.5*min_dist ) {
           good_matchesBack.push_back( matchesBack[i]);
           numMatches++;
       }
@@ -327,7 +333,7 @@ public:
 
     if (numMatches < 24) {
       for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 0.2*max_dist ) {
+        if( matchesBack[i].distance < 3*min_dist ) {
             good_matchesBack.push_back( matchesBack[i]);
             numMatches++;
         }
@@ -336,7 +342,9 @@ public:
 
     if (numMatches < 24) {
       for( int i = 0; i < descriptors_object.rows; i++ ) { 
-        if( matchesBack[i].distance < 0.4*max_dist ) {
+        if (numMatches > 40)
+          break;
+        if( matchesBack[i].distance < 4*min_dist) {
             good_matchesBack.push_back( matchesBack[i]);
             numMatches++;
         }
@@ -495,6 +503,7 @@ public:
         return false;
     }
     else{
+      //std::cout << "BLABLABLABLABLABLABLABLABLABLA" << std::endl;
       return false;
     }
   }
@@ -708,7 +717,7 @@ public:
         std::cout << std::endl;
 
 
-        //std::cout << "-------> TIEMPO: " << tFinal << std::endl;
+        //std::cout << "TIEMPOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: " << tFinal << std::endl;
         if (debug)
           verPanoramica();
       }
