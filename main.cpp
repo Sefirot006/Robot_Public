@@ -12,6 +12,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
+#include <std_msgs/String.h>
 #include <gazebo_msgs/ModelStates.h>
 
 #include <image_transport/image_transport.h>
@@ -28,7 +29,7 @@ using namespace cv;
 
 static const std::string OPENCV_WINDOW = "Image window";
 
-const bool debug = true;
+const bool debug = false;
 
 class RobotDriver
 {
@@ -101,7 +102,7 @@ public:
     esquinaIzquierda = false;
     camIncorrecto = false;
     turbo = false;
-    inicio = true;
+    inicio = false;
 
     // Inicializacion del mapa
     for(unsigned i=0;i<20;++i){
@@ -147,22 +148,22 @@ public:
     // imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
 
     // Para el inicio de la carrera
-    //inicioCarrera = nh.subscribe("/control_tower/race_state", 1, &RobotDriver::iniciaCarrera, this);
+    inicioCarrera = nh.subscribe("/control_tower/race_state", 1, &RobotDriver::iniciaCarrera, this);
 
     // ModelStatesMessage
     ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
     // Para la navegacion
-    //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
+    laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
     // Para sacar el tamaño del robot en el laser
     //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::compruebaRobot, this);
   }
   
-  /**
+  
   void iniciaCarrera(const std_msgs::String::ConstPtr& msg){
     if(msg->data=="GO")
       inicio = true;
   }
-  */
+  
 
   // El robot 2 esta en la i = 53
   void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
@@ -470,7 +471,6 @@ public:
     std::cout << "ESTAS BUSCANDO ESTOOOO!!!" << std::endl;
     std::cout << "good_matches: " << good_matches.size() << std::endl;
     if(good_matches.size()>4){
-      //std::cout << "ES UN FUCKING ROBOT" << std::endl;
       std::cout << "good_matches: " << good_matches.size() << std::endl;
       return true;
     }
@@ -520,16 +520,16 @@ public:
     //std::cout << "HAGO procesaDatosLaser" << std::endl;
     if(debug){
       // Mínimo valor angular del láser -0.521568
-      //ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
+      ROS_INFO_STREAM("AngleMin: " << msg->angle_min);
       // Máximo valor angular del láser 0.524276
-     // ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
+      ROS_INFO_STREAM("AngleMax: " << msg->angle_max);
       // Incremento angular entre dos beams 0.00163669
-      //ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
+      ROS_INFO_STREAM("AngleIncrement: " << msg->angle_increment); 
       // Mínimo valor que devuelve el láser 0.45
-     //ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
+      ROS_INFO_STREAM("RangeMin: " << msg->range_min); 
       // Máximo valor que devuelve el láser. Valores por debajo y 
       // por encima de estos rangos no deben ser tenidos en cuenta 10
-      //ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
+      ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
     }
     // Me esta dando 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
@@ -609,7 +609,7 @@ public:
     }else{
       if(valueIzExt > valueIzExtAnt+0.5){
         esquinaIzquierda = true;
-        std::cout << "ESQUINAAAAAAAAAAAAAA IZQUIERDA" << std::endl;
+        //std::cout << "ESQUINA IZQUIERDA" << std::endl;
         // Sacar la orientacion y no parar hasta que haya girado 90º??
       }
      
@@ -619,7 +619,7 @@ public:
         else if(valueFExt==0.1)
           forwardVel = -0.3;
         else if((valueI < valueIzN+0.3 && valueI > valueIzN-0.3) && valueF > 1.1){
-          std::cout << "SIGO RECTO" << std::endl;
+          //std::cout << "SIGO RECTO" << std::endl;
 
           if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
             forwardVel = 0.9;
@@ -629,16 +629,10 @@ public:
             forwardVel = 0.5;
             turbo = false;
           }
-          /**
-          if(!turbo)
-            forwardVel = 0.5;
-          else
-            forwardVel = 0.9;
-            */
           rotateVel = 0;
         }
         else if(valueI > valueIzN+0.3 && valueF > 1.1){
-          std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
+          //std::cout << "AVANZO PERO AJUSTANDO A LA IZQUIERDA" << std::endl;
           if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
             forwardVel = 0.9;
           else if(turbo && tiempoTurboActivado>0)
@@ -647,16 +641,10 @@ public:
             forwardVel = 0.5;
             turbo = false;
           }
-          /**
-          if(!turbo)
-            forwardVel = 0.5;
-          else
-            forwardVel = 0.9;
-          */
           rotateVel = 0.3;
         }
         else if(valueI < valueIzN-0.3 && valueF > 1.1){
-          std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
+          //std::cout << "AVANZO PERO AJUSTANDO A LA DERECHA" << std::endl;
           if(!turbo && tiempoTurboActivado>0 && tiempoTurboActivado<5)
             forwardVel = 0.9;
           else if(turbo && tiempoTurboActivado>0)
@@ -665,23 +653,16 @@ public:
             forwardVel = 0.5;
             turbo = false;
           }
-          /**
-          if(!turbo)
-            forwardVel = 0.5;
-          else
-            forwardVel = 0.9;
-          */
           rotateVel = -0.3;
         }
         // Hasta aqui es para que siga la pared izquierda
         // Para que si esta muy cerca de la pared o de un obstaculo intente evitarlo
-        
         else if(valueF < 1.1){
           if(cv_ptr_frontal != 0){
             if(tiempoTurboDesactivado > 5){
               if(encuentraRobot()){
                 turbo = true;
-                std::cout << "ESTOY VIENDO A UN ROBOT DELANTE A MENOS DE 1 METRO!!" << std::endl;
+                std::cout << "ACTIVANDO TURBO" << std::endl;
               }
             }
             else{
@@ -691,12 +672,12 @@ public:
           }
           forwardVel = 0.1;
           if(valueI < valueD){
-            std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
+            //std::cout << "ENTRO PARA GIRAR A LA DERECHA" << std::endl;
             rotateVel = -0.4;
           }
           else{
             rotateVel = 0.4;
-            std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
+            //std::cout << "ENTRO PARA GIRAR A LA IZQUIERDA" << std::endl;
           }
         }
         else forwardVel = 0.5;
@@ -704,13 +685,8 @@ public:
       else if(esquinaIzquierda){
         giroEsquinaIzquierda();
       }
-      /**
-      else if(turbo){
-        navegacionTurbo();
-      }
-      */
       else{
-        //std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
+        std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
       }
       valueIzExtAnt = valueIzExt;
       valueDeExtAnt = valueDeExt;
@@ -719,9 +695,6 @@ public:
 
   void bucle(){
     ros::Rate rate(10);
-    
-    
-    //std::cout << "Iniciando bucle para siempre" << std::endl;
     while (ros::ok()){
       if(inicio){
         long double tiemp = getTickCount();
@@ -753,6 +726,9 @@ public:
         //std::cout << "TIEMPOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: " << tFinal << std::endl;
         if (debug)
           verPanoramica();
+      }
+      else{
+        std::cout << "Esperando señal de salida" << std::endl;
       }
     }
 
@@ -847,14 +823,7 @@ int main(int argc, char** argv){   //init the ROS node
 
    RobotDriver driver(nh);
 
-   //if (debug) {
-      //cv::namedWindow("view");
-      //cv::startWindowThread();
-      //image_transport::ImageTransport it(nh);
-      //image_transport::Subscriber subAux = it.subscribe("robot1/camera/rgb/image_raw", 1, verCamaraFrontal);
-   //}
-
-   //driver.driveKeyboard();
    driver.bucle();
+   
    return 0;
 }
