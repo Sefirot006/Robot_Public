@@ -29,7 +29,7 @@ using namespace cv;
 
 static const std::string OPENCV_WINDOW = "Image window";
 
-const bool debug = true;
+const bool debug = false;
 const bool panoramica = true;
 
 class RobotDriver
@@ -103,7 +103,8 @@ public:
     esquinaIzquierda = false;
     camIncorrecto = false;
     turbo = false;
-    inicio = false;
+    // Poner a true para no esperar el mensaje GO
+    inicio = true;
 
     // Inicializacion del mapa
     for(unsigned i=0;i<20;++i){
@@ -112,10 +113,10 @@ public:
       }
     }
 
-    Mat img_back  = imread( "./robotSolitario1.png", CV_LOAD_IMAGE_GRAYSCALE );
-    Mat img_front = imread( "./robotSolitarioGiradoFrontal.png", CV_LOAD_IMAGE_GRAYSCALE );
-    Mat img_left  = imread( "./robotSolitarioGiradoIzq.png", CV_LOAD_IMAGE_GRAYSCALE );
-    Mat img_right = imread( "./robotSolitarioGiradoDerecha.png", CV_LOAD_IMAGE_GRAYSCALE );
+    Mat img_back  = imread( "./src/images/robotSolitario1.png", CV_LOAD_IMAGE_GRAYSCALE );
+    Mat img_front = imread( "./src/images/robotSolitarioGiradoFrontal.png", CV_LOAD_IMAGE_GRAYSCALE );
+    Mat img_left  = imread( "./src/images/robotSolitarioGiradoIzq.png", CV_LOAD_IMAGE_GRAYSCALE );
+    Mat img_right = imread( "./src/images/robotSolitarioGiradoDerecha.png", CV_LOAD_IMAGE_GRAYSCALE );
 
     if( !img_back.data || !img_front.data || !img_left.data || !img_right.data)
       { std::cout<< " --(!) Error reading images " << std::endl; }
@@ -135,8 +136,6 @@ public:
     extractor.compute(img_right,keypoints_1,descriptorsRight);
 
     nh_ = nh;
-
-    //ultimoGiro = ' ';
     
     frontRGBSub = nh.subscribe("/robot2/camera/rgb/image_raw", 1, &RobotDriver::procesaDatosMonofocal, this);
     rearRGB1Sub = nh.subscribe("/robot2/trasera1/trasera1/rgb/image_raw", 1, &RobotDriver::procesaDatosBifocalIzq, this);
@@ -145,9 +144,6 @@ public:
     //set up the publisher for the cmd_vel topic
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/robot2/commands/velocity", 1);
     
-    // Para usar el imu descomentar
-    // imu = nh.subscribe("/robot2/sensors/imu_data", 1, &RobotDriver::commandImu, this);
-
     // Para el inicio de la carrera
     inicioCarrera = nh.subscribe("/control_tower/race_state", 1, &RobotDriver::iniciaCarrera, this);
 
@@ -155,8 +151,6 @@ public:
     ms = nh.subscribe("/gazebo/model_states", 1, &RobotDriver::mapa, this);
     // Para la navegacion
     laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::procesaDatosLaser, this);
-    // Para sacar el tamaño del robot en el laser
-    //laserSub = nh.subscribe("/robot2/scan", 1, &RobotDriver::compruebaRobot, this);
   }
   
   
@@ -165,18 +159,14 @@ public:
       inicio = true;
   }
   
-
   // El robot 2 esta en la i = 53
   void mapa(const gazebo_msgs::ModelStates::ConstPtr& msg){
     unsigned suma = 0;
-    //ROS_INFO_STREAM("Nombre: " << msg->name[53]);
-    //ROS_INFO_STREAM("Posicion: \n" << msg->pose[53].position);
     posRobot.x = msg->pose[53].position.x+9;
     posRobot.y = msg->pose[53].position.y+9;
     //std::cout << "Posicion X en la matriz: " << posRobot.x << std::endl;
     //std::cout << "Posicion Y en la matriz: " << posRobot.y << std::endl;
 
-    //ROS_INFO_STREAM("Orientacion: \n" << msg->pose[53].orientation);
     orientacion = atan2(2*(msg->pose[53].orientation.x*msg->pose[53].orientation.y + msg->pose[53].orientation.w*msg->pose[53].orientation.z), 
         msg->pose[53].orientation.w*msg->pose[53].orientation.w +
         msg->pose[53].orientation.x*msg->pose[53].orientation.x -
@@ -237,7 +227,7 @@ public:
         orientacionGiro = orientacion-2.25;
       else
         orientacionGiro = orientacion+2.25;
-      //std::cout << "OJO QUE ESTAS YENDO AL REVES" <<std::endl;
+      //std::cout << "Estas cogiendo el camino incorrecto" <<std::endl;
     }
   }
 
@@ -246,8 +236,6 @@ public:
     try{
       if (debug) {
           verCamaraFrontal(msg);
-          //verCamaraFrontalNormalizada(msg);
-          //verPanoramica(msg);
         }
         cv_ptr_frontal = cv_bridge::toCvCopy(msg, msg->encoding);
     }
@@ -272,12 +260,6 @@ public:
     // cv::Mat image2 = normalizaImagen(cv_ptr_izq->image);
     cv::Mat image2 = cv_ptr_der->image;
     cv::Mat image1 = cv_ptr_izq->image;
-    // cv::namedWindow("Prueba");
-    // cv::startWindowThread();
-    // cv::imshow( "Prueba", image2 );
-    // cv::namedWindow("Prueba1");
-    // cv::startWindowThread();
-    // cv::imshow( "Prueba1", image1 );
 
     // 2.- Calcular KeyPoints (2 imágenes)
     //-- Step 1: Detect the keypoints using SURF Detector
@@ -383,7 +365,7 @@ public:
 
   void procesaDatosBifocalDer(const sensor_msgs::ImageConstPtr& msg){
     try {
-      if (panoramica)
+      if (debug)
         verCamaraDerecha(msg);
       cv_ptr_der = cv_bridge::toCvCopy(msg, msg->encoding);
     }
@@ -439,11 +421,13 @@ public:
     { if( matches[i].distance < 3*min_dist && matches[i].distance < 0.125 )
       { good_matches.push_back( matches[i]); }
     }
-    std::cout << "ESTAS BUSCANDO ESTOOOO!!!" << std::endl;
-    std::cout << "good_matches: " << good_matches.size() << std::endl;
+    //std::cout << "good_matches: " << good_matches.size() << std::endl;
     
     if(good_matches.size()>4){
-      std::cout << "good_matches: " << good_matches.size() << std::endl;
+      //std::cout << "good_matches: " << good_matches.size() << std::endl;
+        std::cout << "------------------------------------"
+                  << "------ HE DETECTADO UN ROBOT -------" 
+                  << "------------------------------------" << std::endl;
       return true;
     }
     else{
@@ -455,17 +439,12 @@ public:
     // Detectar los keypoints
     SurfFeatureDetector detector(900);
     std::vector<KeyPoint> keypoints_2;
-    //std::cout <<"PASO 1" << std::endl;
     detector.detect(cv_ptr_frontal->image, keypoints_2);
-    //std::cout <<"PASO 2" << std::endl;
     // Calcular los descriptores de los keypoints
     if(keypoints_2.size()!=0){
       SurfDescriptorExtractor extractor;
       Mat descriptors2;
-      //extractor.compute(img_back,keypoints_1,descriptorsBack);
-      //std::cout <<"PASO 3" << std::endl;
       extractor.compute(cv_ptr_frontal->image,keypoints_2,descriptors2);
-      //std::cout <<"PASO 4" << std::endl;
 
       // Buscar coincidencias en los descriptores
       BFMatcher matcher(NORM_L2);
@@ -483,7 +462,6 @@ public:
         return false;
     }
     else{
-      //std::cout << "BLABLABLABLABLABLABLABLABLABLA" << std::endl;
       return false;
     }
   }
@@ -503,15 +481,14 @@ public:
       // por encima de estos rangos no deben ser tenidos en cuenta 10
       ROS_INFO_STREAM("RangeMax: " << msg->range_max); 
     }
-    // Me esta dando 639 valores del laser
+    // 639 valores del laser
     int totalValues = ceil((msg->angle_max-msg->angle_min)/msg->angle_increment); // Total de valores que devuelve el láser
-
 
     valueI = 0.1; valueF = 0.1; valueD = 0.1; valueIzExt = 0.1; valueDeExt = 0.1;
     contI = 1; contF = 1; contD = 1; contIE = 1; contDE = 1;
     
-    // 4
     for(int i=0;i<totalValues;++i){
+      // 4
       if(i>=0 && i<3){
         if(!std::isnan(msg->ranges[i])){
           valueDeExt += msg->ranges[i];
@@ -560,14 +537,14 @@ public:
     valueDeExt /= contDE;
     //ROS_INFO_STREAM("valueDeExt:" << valueDeExt << "; " << contDE); // Acceso a los valores de rango
     valueD /= contD;
-    ROS_INFO_STREAM("ValueD:" << valueD << "; " << contD); // Acceso a los valores de rango
+    //ROS_INFO_STREAM("ValueD:" << valueD << "; " << contD); // Acceso a los valores de rango
     valueF /= contF;
-    ROS_INFO_STREAM("ValueF:" << valueF << "; " << contF); // Acceso a los valores de rango
+    //ROS_INFO_STREAM("ValueF:" << valueF << "; " << contF); // Acceso a los valores de rango
     valueI /= contI;
-    ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
+    //ROS_INFO_STREAM("ValueI:" << valueI << "; " << contI); // Acceso a los valores de rango
     valueIzExt /= contIE;
     valueFExt /= contFExt;
-    std::cout << "valueFExtremo: " << valueFExt << std::endl;
+    //std::cout << "valueFExtremo: " << valueFExt << std::endl;
     //std::cout << "valueIzExtAnt: " << valueIzExtAnt << std::endl;
     //ROS_INFO_STREAM("valueIzExt:" << valueIzExt << "; " << contIE); // Acceso a los valores de rango
     //std::cout << "valueDeExtAnt: " << valueDeExtAnt << std::endl;
@@ -584,7 +561,6 @@ public:
       if(valueIzExt > valueIzExtAnt+0.5){
         esquinaIzquierda = true;
         //std::cout << "ESQUINA IZQUIERDA" << std::endl;
-        // Sacar la orientacion y no parar hasta que haya girado 90º??
       }
      
       if(!esquinaIzquierda){
@@ -660,7 +636,7 @@ public:
         giroEsquinaIzquierda();
       }
       else{
-        std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
+        //std::cout << "NO ESTOY ACTUALIZANDO NADA" << std::endl;
       }
       valueIzExtAnt = valueIzExt;
       valueDeExtAnt = valueDeExt;
@@ -690,15 +666,15 @@ public:
           tiempoTurboDesactivado = 10;
           tiempoTurboActivado = 5;
         }
-        std::cout << "tiempo turbo activado: " << tiempoTurboActivado << std::endl;
-        std::cout << "tiempo turbo desactivado: " << tiempoTurboDesactivado << std::endl;
-        std::cout << "Velocidad: " << forwardVel << std::endl;
-        std::cout << "turbo: " << turbo << std::endl;
-        std::cout << std::endl;
+        //std::cout << "tiempo turbo activado: " << tiempoTurboActivado << std::endl;
+        ///std::cout << "tiempo turbo desactivado: " << tiempoTurboDesactivado << std::endl;
+        //std::cout << "Velocidad: " << forwardVel << std::endl;
+        //std::cout << "turbo: " << turbo << std::endl;
+        //std::cout << std::endl;
 
 
-        //std::cout << "TIEMPOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: " << tFinal << std::endl;
-        if (debug)
+        //std::cout << "Tiempo bucle: " << tFinal << std::endl;
+        if (panoramica)
           verPanoramica();
       }
       else{
